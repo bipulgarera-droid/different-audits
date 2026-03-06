@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Audit Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            background: #0a0a0f;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(59, 130, 246, 0.04));
+            border: 1px solid rgba(139, 92, 246, 0.15);
+            border-radius: 14px;
+        }
+
+        .glow-violet {
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.08);
+        }
+
+        .glow-pink {
+            box-shadow: 0 0 40px rgba(236, 72, 153, 0.08);
+        }
+
+        .glow-orange {
+            box-shadow: 0 0 40px rgba(249, 115, 22, 0.08);
+        }
+
+        .glow-blue {
+            box-shadow: 0 0 40px rgba(59, 130, 246, 0.08);
+        }
+
+        .engagement-high {
+            color: #34d399;
+        }
+
+        .engagement-medium {
+            color: #fbbf24;
+        }
+
+        .engagement-low {
+            color: #f87171;
+        }
+
+        .hook-badge {
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hook-question {
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+        }
+
+        .hook-bold_claim {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+        }
+
+        .hook-story {
+            background: rgba(168, 85, 247, 0.15);
+            color: #d8b4fe;
+        }
+
+        .hook-shock {
+            background: rgba(249, 115, 22, 0.15);
+            color: #fdba74;
+        }
+
+        .hook-tutorial {
+            background: rgba(34, 197, 94, 0.15);
+            color: #86efac;
+        }
+
+        .hook-relatable {
+            background: rgba(236, 72, 153, 0.15);
+            color: #f9a8d4;
+        }
+
+        .hook-controversy {
+            background: rgba(220, 38, 38, 0.15);
+            color: #fca5a5;
+        }
+
+        .hook-statistic {
+            background: rgba(6, 182, 212, 0.15);
+            color: #67e8f9;
+        }
+
+        .hook-negative {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+        }
+
+        .hook-unknown,
+        .hook-caption_only {
+            background: rgba(107, 114, 128, 0.15);
+            color: #d1d5db;
+        }
+
+        .section-capture {
+            padding: 32px;
+            margin-bottom: 20px;
+        }
+
+        .section-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.3), transparent);
+            margin: 8px 0;
+        }
+
+        /* Bar chart styles */
+        .bar-container {
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            height: 100%;
+        }
+
+        .bar {
+            border-radius: 6px 6px 2px 2px;
+            min-width: 28px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .bar:hover {
+            opacity: 0.85;
+            transform: scaleY(1.02);
+        }
+
+        /* Competitor card hover */
+        .comp-card {
+            transition: all 0.2s ease;
+            cursor: default;
+        }
+
+        .comp-card:hover {
+            border-color: rgba(139 92 246 / 0.4);
+            transform: translateY(-2px);
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+        }
+
+        /* Slides generation overlay */
+        .slides-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .slides-overlay-card {
+            background: #1a1a24;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+        }
+    </style>
+</head>
+
+<body class="text-white min-h-screen">
+
+    <!-- Header -->
+    <div class="p-6 border-b border-gray-800/50">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div>
+                <h1
+                    class="text-2xl font-bold bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">
+                    Instagram Audit
+                </h1>
+                <p class="text-gray-500 text-sm mt-1" id="audit-subtitle">Social Media Performance Analysis</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <select id="slide-template-select"
+                    class="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2">
+                    <option value="social_media">Social Media</option>
+                </select>
+                <button onclick="generateSlides()"
+                    class="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-all">
+                    <i data-lucide="presentation" class="w-4 h-4"></i> Generate Slides
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading-state" class="flex flex-col items-center justify-center py-24">
+        <div class="animate-spin w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full mb-4"></div>
+        <p class="text-gray-400" id="loading-text">Loading audit data...</p>
+        <div class="w-64 bg-gray-800 rounded-full h-2 mt-4">
+            <div id="loading-bar" class="bg-violet-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- DASHBOARD CONTENT — 5 Slide-Ready Sections     -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="dashboard-content" class="max-w-7xl mx-auto p-6 space-y-4" style="display: none;">
+
+        <!-- ─────────────────────────────────────────── -->
+        <!-- SLIDE 1: Client Baseline                    -->
+        <!-- ─────────────────────────────────────────── -->
+        <div id="section-baseline" class="section-capture">
+            <h3 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                <i data-lucide="user-circle" class="w-5 h-5 text-violet-400"></i> Client Profile Baseline
+            </h3>
+
+            <div class="glass-card glow-violet p-6">
+                <div class="flex items-center gap-6 mb-6">
+                    <img id="profile-pic" src="" alt="Profile"
+                        class="w-20 h-20 rounded-full ring-2 ring-violet-500/50 object-cover" />
+                    <div>
+                        <h2 id="profile-name" class="text-xl font-bold text-white"></h2>
+                        <p id="profile-username" class="text-gray-400 text-sm pb-1">@username</p>
+                        <p id="profile-bio" class="text-gray-500 text-xs mt-1 max-w-md line-clamp-4 pb-2"></p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-5 gap-4">
+                    <div class="stat-card p-4 text-center">
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Followers</div>
+                        <div id="stat-followers" class="text-2xl font-bold text-white">-</div>
+                    </div>
+                    <div class="stat-card p-4 text-center">
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Following</div>
+                        <div id="stat-following" class="text-2xl font-bold text-white">-</div>
+                    </div>
+                    <div class="stat-card p-4 text-center">
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Total Posts</div>
+                        <div id="stat-posts" class="text-2xl font-bold text-white">-</div>
+                    </div>
+                    <div class="stat-card p-4 text-center">
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Eng. Rate</div>
+                        <div id="stat-engagement" class="text-2xl font-bold text-emerald-400">-</div>
+                    </div>
+                    <div class="stat-card p-4 text-center">
+                        <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Avg. Views</div>
+                        <div id="stat-avg-views" class="text-2xl font-bold text-blue-400">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- ─────────────────────────────────────────── -->
+        <!-- SLIDE 2: Competitor Landscape               -->
+        <!-- ─────────────────────────────────────────── -->
+        <div id="section-competitors" class="section-capture">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="target" class="w-5 h-5 text-blue-400"></i> Competitor Landscape
+                </h3>
+                <span class="text-xs text-gray-400 bg-gray-800/80 px-3 py-1 rounded-full" id="comp-count-badge">
+                    0 Competitors Analyzed
+                </span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3" id="competitors-grid">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- ─────────────────────────────────────────── -->
+        <!-- SLIDE 3: Strategic Summary                  -->
+        <!-- ─────────────────────────────────────────── -->
+        <div id="section-strategy" class="section-capture">
+            <h3 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                <i data-lucide="brain" class="w-5 h-5 text-pink-400"></i> Strategic Summary
+            </h3>
+            <div class="glass-card glow-pink p-6 border-pink-500/10">
+                <p class="text-gray-400 text-xs uppercase tracking-wider mb-4 font-semibold">Powered by AI Analysis of
+                    Top-Performing Competitor Content</p>
+                <div class="space-y-4" id="ai-strategy-bullets">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- ─────────────────────────────────────────── -->
+        <!-- SLIDE 4: Viral Swipe File                   -->
+        <!-- ─────────────────────────────────────────── -->
+        <div id="section-swipe-file" class="section-capture">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                    <i data-lucide="flame" class="w-5 h-5 text-orange-400"></i> Viral Swipe File
+                </h3>
+                <span class="text-xs text-gray-400 bg-gray-800/80 px-3 py-1 rounded-full" id="reel-count-badge">
+                    Top Outlier Reels
+                </span>
+            </div>
+
+            <div class="glass-card glow-orange overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-800 bg-black/30">
+                            <th
+                                class="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider w-40">
+                                Competitor</th>
+                            <th
+                                class="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider">
+                                Hook / Opening Line</th>
+                            <th
+                                class="text-left py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider w-28">
+                                Type</th>
+                            <th
+                                class="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider w-24">
+                                Views</th>
+                            <th
+                                class="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider w-24">
+                                Eng Rate</th>
+                            <th
+                                class="text-right py-3.5 px-4 text-gray-400 font-medium text-xs uppercase tracking-wider w-28">
+                                Outlier Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reels-table-body">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- ─────────────────────────────────────────── -->
+        <!-- SLIDE 5: Engagement Comparison              -->
+        <!-- ─────────────────────────────────────────── -->
+        <div id="section-engagement" class="section-capture">
+            <h3 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
+                <i data-lucide="bar-chart-3" class="w-5 h-5 text-emerald-400"></i> Engagement Comparison
+            </h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <!-- Left: Bar Chart Visual -->
+                <div class="glass-card glow-blue p-6">
+                    <p class="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Engagement Rate
+                        Comparison</p>
+                    <div class="flex items-end gap-4 h-52" id="eng-bar-chart">
+                        <!-- Filled by JS -->
+                    </div>
+                    <div class="flex gap-4 mt-4 justify-center">
+                        <div class="flex items-center gap-2 text-xs text-gray-400">
+                            <span class="w-3 h-3 rounded bg-violet-500 inline-block"></span> Your Profile
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-gray-400">
+                            <span class="w-3 h-3 rounded bg-blue-500 inline-block"></span> Avg Competitor
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-gray-400">
+                            <span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> Top Outlier
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Key Metrics Table -->
+                <div class="glass-card p-6">
+                    <p class="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Performance Summary</p>
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-800">
+                                <th class="text-left py-3 text-gray-400 font-medium text-xs uppercase">Metric</th>
+                                <th class="text-right py-3 text-violet-400 font-medium text-xs uppercase">You</th>
+                                <th class="text-right py-3 text-blue-400 font-medium text-xs uppercase">Avg Comp.</th>
+                                <th class="text-right py-3 text-emerald-400 font-medium text-xs uppercase">Top Outlier
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-table-body">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ─────────────────────────────────────────────
+        // Globals
+        // ─────────────────────────────────────────────
+        let auditData = null;
+        let auditId = null;
+
+        // ─────────────────────────────────────────────
+        // Formatting helpers
+        // ─────────────────────────────────────────────
+        function formatNumber(n) {
+            if (n == null || isNaN(n)) return '-';
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+
+        function engagementClass(rate) {
+            if (rate >= 3) return 'engagement-high';
+            if (rate >= 1) return 'engagement-medium';
+            return 'engagement-low';
+        }
+
+        function formatPercent(n) {
+            if (n == null || isNaN(n)) return '-';
+            return n.toFixed(2) + '%';
+        }
+
+        // Generate a colored circle avatar with username initial
+        function makeInitialAvatar(username, size) {
+            const colors = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#ec4899', '#6366f1', '#0891b2'];
+            let hash = 0;
+            for (let i = 0; i < (username || '').length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
+            const color = colors[Math.abs(hash) % colors.length];
+            const letter = (username || '?')[0].toUpperCase();
+            return `<div class="w-14 h-14 rounded-full mb-3 ring-2 ring-gray-700/50 flex items-center justify-center text-white text-lg font-bold" style="background:${color};min-width:${size || 56}px;min-height:${size || 56}px">${letter}</div>`;
+        }
+
+        // ─────────────────────────────────────────────
+        // Populate Dashboard — ALL 5 SECTIONS
+        // ─────────────────────────────────────────────
+        function populateDashboard(data) {
+            const profile = data.profile || {};
+            window._auditProfile = profile;  // Store for slides generation
+            const reels = data.reels || [];
+            const aiStrategy = data.ai_strategy || [];
+
+            // ═══════════════════════════════════
+            // SLIDE 1: Client Baseline
+            // ═══════════════════════════════════
+            const profilePicEl = document.getElementById('profile-pic');
+            if (profile.profile_pic_url) {
+                profilePicEl.src = profile.profile_pic_url;
+                profilePicEl.onerror = function () {
+                    this.outerHTML = makeInitialAvatar(profile.username || 'U', 80);
+                };
+            } else {
+                profilePicEl.outerHTML = makeInitialAvatar(profile.username || 'U', 80);
+            }
+            document.getElementById('profile-name').textContent = profile.full_name || profile.username || '';
+            document.getElementById('profile-username').textContent = '@' + (profile.username || '');
+            document.getElementById('profile-bio').textContent = profile.biography || profile.bio || '';
+            document.getElementById('stat-followers').textContent = formatNumber(profile.followers);
+            document.getElementById('stat-following').textContent = formatNumber(profile.following || profile.follows);
+            document.getElementById('stat-posts').textContent = formatNumber(profile.posts_count || profile.postsCount);
+            document.getElementById('stat-engagement').textContent = formatPercent(profile.engagement_rate);
+            document.getElementById('audit-subtitle').textContent = `Outlier Analysis: ${profile.category || 'Instagram'}`;
+
+            // Calculate avg views from client's own reels data (from profile latestPosts)
+            const clientAvgViews = profile.avg_views || 0;
+            document.getElementById('stat-avg-views').textContent = formatNumber(clientAvgViews);
+
+            // ═══════════════════════════════════
+            // SLIDE 2: Competitor Landscape
+            // ═══════════════════════════════════
+            const compGrid = document.getElementById('competitors-grid');
+            const uniqueComps = {};
+            reels.forEach(r => {
+                const c = r.competitor;
+                if (c && c.username && !uniqueComps[c.username]) {
+                    uniqueComps[c.username] = c;
+                }
+            });
+            const competitors = Object.values(uniqueComps);
+            document.getElementById('comp-count-badge').textContent = `${competitors.length} Competitors Analyzed`;
+
+            if (competitors.length > 0) {
+                compGrid.innerHTML = competitors.map(c => {
+                    const engRate = c.engagement_rate ? c.engagement_rate.toFixed(2) + '%' : '-';
+                    const engClass = engagementClass(c.engagement_rate || 0);
+                    const avatar = makeInitialAvatar(c.username, 56);
+                    return `
+                    <div class="comp-card glass-card p-4 flex flex-col items-center text-center border border-gray-800/50">
+                        ${avatar}
+                        <div class="font-semibold text-xs text-white truncate w-full pb-1 pt-0.5">@${c.username}</div>
+                        <div class="text-lg font-bold text-blue-300 mt-1">${formatNumber(c.followers)}</div>
+                        <div class="text-[10px] text-gray-500 uppercase">Followers</div>
+                        <div class="mt-2 text-xs font-mono font-semibold ${engClass}">${engRate}</div>
+                        <div class="text-[10px] text-gray-500">Eng Rate</div>
+                        ${c.category ? `<div class="text-[9px] text-gray-600 mt-1 truncate w-full">${c.category}</div>` : ''}
+                    </div>`;
+                }).join('');
+            } else {
+                compGrid.innerHTML = '<p class="text-gray-500 text-sm col-span-full">No competitor data available</p>';
+            }
+
+            // ═══════════════════════════════════
+            // SLIDE 3: AI Strategic Summary
+            // ═══════════════════════════════════
+            const stratContainer = document.getElementById('ai-strategy-bullets');
+            if (aiStrategy && aiStrategy.length > 0) {
+                stratContainer.innerHTML = aiStrategy.map((bullet, i) => `
+                        <div class="flex items-start gap-3 p-3 rounded-lg ${i % 2 === 0 ? 'bg-white/[0.02]' : ''}">
+                        <div class="flex-shrink-0 mt-0.5 w-6 h-6 rounded-full bg-pink-500/20 flex items-center justify-center">
+                            <span class="text-pink-400 text-xs font-bold">${i + 1}</span>
+                        </div>
+                        <p class="text-white text-sm leading-relaxed">${bullet}</p>
+                    </div>
+                        `).join('');
+            } else {
+                stratContainer.innerHTML = `
+                        <div class="flex items-start gap-3 p-3">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-yellow-500 mt-0.5"></i>
+                        <p class="text-gray-400 text-sm italic">AI strategy analysis requires a valid Groq API key. Add your key to the .env file and re-run the audit.</p>
+                    </div> `;
+            }
+
+            // ═══════════════════════════════════
+            // SLIDE 4: Viral Swipe File Table
+            // ═══════════════════════════════════
+            const tbody = document.getElementById('reels-table-body');
+            const displayReels = reels.slice(0, 15); // Show up to 15
+            document.getElementById('reel-count-badge').textContent = `Top ${displayReels.length} Outlier Reels`;
+
+            tbody.innerHTML = displayReels.map((r, i) => {
+                const engRate = r.views ? ((r.likes + r.comments) / r.views * 100).toFixed(2) : '0.00';
+                const hookText = r.hook_text || r.transcript?.substring(0, 80) || r.caption?.substring(0, 80) || '—';
+                const hookType = r.hook_type || (r.transcript ? 'transcribed' : 'caption_only');
+                const compName = r.competitor?.username || r.owner_username || '?';
+                const outlierScore = r.outlier_score ? r.outlier_score.toFixed(1) + 'x' : '-';
+                const scoreColor = (r.outlier_score || 0) >= 5 ? 'text-emerald-400' :
+                    (r.outlier_score || 0) >= 2 ? 'text-yellow-400' : 'text-gray-400';
+
+                return `
+                    <tr class="border-b border-gray-800/40 hover:bg-white/[0.02] transition-colors">
+                        <td class="py-3.5 px-4">
+                            <div class="font-medium text-gray-200 text-xs">@${compName}</div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <div class="text-gray-100 text-sm leading-snug">"${hookText.length > 100 ? hookText.substring(0, 100) + '...' : hookText}"</div>
+                            <div class="text-xs text-gray-600 mt-1">
+                                ${r.url ? `<a href="${r.url}" target="_blank" class="hover:text-violet-400 inline-flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> View</a>` : ''}
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="hook-badge hook-${hookType}">${hookType.replace(/_/g, ' ')}</span>
+                        </td>
+                        <td class="py-3.5 px-4 text-right">
+                            <div class="text-blue-300 font-mono text-sm font-semibold">${formatNumber(r.views)}</div>
+                        </td>
+                        <td class="py-3.5 px-4 text-right">
+                            <div class="font-mono text-sm font-semibold ${engagementClass(parseFloat(engRate))}">${engRate}%</div>
+                        </td>
+                        <td class="py-3.5 px-4 text-right">
+                            <div class="font-mono text-sm font-bold ${scoreColor}">${outlierScore}</div>
+                        </td>
+                    </tr>
+                        `;
+            }).join('');
+
+            // ═══════════════════════════════════
+            // SLIDE 5: Engagement Comparison
+            // ═══════════════════════════════════
+            buildEngagementComparison(profile, competitors, reels);
+
+            // Init lucide icons
+            lucide.createIcons();
+        }
+
+        // ─────────────────────────────────────────────
+        // Engagement Comparison Builder
+        // ─────────────────────────────────────────────
+        function buildEngagementComparison(profile, competitors, reels) {
+            // Calculate metrics
+            const clientEng = profile.engagement_rate || 0;
+            const clientFollowers = profile.followers || 0;
+            const clientAvgViews = profile.avg_views || 0;
+
+            // Average competitor stats
+            const compEngRates = competitors.map(c => c.engagement_rate || 0).filter(e => e > 0);
+            const avgCompEng = compEngRates.length > 0 ? compEngRates.reduce((a, b) => a + b, 0) / compEngRates.length : 0;
+            const compFollowers = competitors.map(c => c.followers || 0).filter(f => f > 0);
+            const avgCompFollowers = compFollowers.length > 0 ? compFollowers.reduce((a, b) => a + b, 0) / compFollowers.length : 0;
+
+            // Top outlier reel stats
+            const topReel = reels[0] || {};
+            const topReelEng = topReel.views ? ((topReel.likes + topReel.comments) / topReel.views * 100) : 0;
+            const topReelViews = topReel.views || 0;
+
+            // Average reel views across all outliers
+            const allViews = reels.map(r => r.views || 0).filter(v => v > 0);
+            const avgOutlierViews = allViews.length > 0 ? allViews.reduce((a, b) => a + b, 0) / allViews.length : 0;
+
+            // ── Bar Chart (sanitize to prevent NaN crashes in html2canvas) ──
+            const barChart = document.getElementById('eng-bar-chart');
+            const safeNum = (n) => (isFinite(n) && !isNaN(n)) ? n : 0;
+            const sClientEng = safeNum(clientEng);
+            const sAvgCompEng = safeNum(avgCompEng);
+            const sTopReelEng = safeNum(topReelEng);
+            const maxEng = Math.max(sClientEng, sAvgCompEng, sTopReelEng, 0.01);
+
+            const barH = (val) => Math.max(Math.min((val / maxEng) * 100, 100), 4);
+
+            barChart.innerHTML = `
+                <div class="flex flex-col items-center justify-end h-full flex-1 relative">
+                    <div class="w-full absolute bottom-6 flex flex-col items-center justify-end" style="height: calc(100% - 24px);">
+                        <div class="text-xs font-mono font-bold text-violet-300 mb-2">${sClientEng.toFixed(2)}%</div>
+                        <div class="w-full rounded-md" style="height: ${barH(sClientEng)}%; background: linear-gradient(to top, #7c3aed, #a78bfa)"></div>
+                    </div>
+                    <div class="text-[10px] text-gray-500 text-center absolute bottom-0">You</div>
+                </div>
+                <div class="flex flex-col items-center justify-end h-full flex-1 relative">
+                    <div class="w-full absolute bottom-6 flex flex-col items-center justify-end" style="height: calc(100% - 24px);">
+                        <div class="text-xs font-mono font-bold text-blue-300 mb-2">${sAvgCompEng.toFixed(2)}%</div>
+                        <div class="w-full rounded-md" style="height: ${barH(sAvgCompEng)}%; background: linear-gradient(to top, #2563eb, #60a5fa)"></div>
+                    </div>
+                    <div class="text-[10px] text-gray-500 text-center absolute bottom-0">Avg Comp</div>
+                </div>
+                <div class="flex flex-col items-center justify-end h-full flex-1 relative">
+                    <div class="w-full absolute bottom-6 flex flex-col items-center justify-end" style="height: calc(100% - 24px);">
+                        <div class="text-xs font-mono font-bold text-emerald-300 mb-2">${sTopReelEng.toFixed(2)}%</div>
+                        <div class="w-full rounded-md" style="height: ${barH(sTopReelEng)}%; background: linear-gradient(to top, #059669, #34d399)"></div>
+                    </div>
+                    <div class="text-[10px] text-gray-500 text-center absolute bottom-0">Top Outlier</div>
+                </div>
+            `;
+
+            // ── Comparison Table ──
+            const compTable = document.getElementById('comparison-table-body');
+            const rows = [
+                { metric: 'Followers', you: formatNumber(clientFollowers), comp: formatNumber(avgCompFollowers), outlier: formatNumber(topReel.competitor?.followers || '-') },
+                { metric: 'Engagement Rate', you: formatPercent(clientEng), comp: formatPercent(avgCompEng), outlier: formatPercent(topReelEng) },
+                { metric: 'Avg Reel Views', you: formatNumber(clientAvgViews), comp: '-', outlier: formatNumber(avgOutlierViews) },
+                { metric: 'Top Reel Views', you: '-', comp: '-', outlier: formatNumber(topReelViews) },
+                { metric: 'Outlier Score', you: '-', comp: '-', outlier: topReel.outlier_score ? topReel.outlier_score.toFixed(1) + 'x' : '-' },
+            ];
+
+            compTable.innerHTML = rows.map(r => `
+                        <tr class="border-b border-gray-800/40">
+                    <td class="py-3 text-gray-300 text-sm">${r.metric}</td>
+                    <td class="py-3 text-right text-violet-300 font-mono text-sm font-semibold">${r.you}</td>
+                    <td class="py-3 text-right text-blue-300 font-mono text-sm font-semibold">${r.comp}</td>
+                    <td class="py-3 text-right text-emerald-300 font-mono text-sm font-semibold">${r.outlier}</td>
+                </tr>
+                        `).join('');
+        }
+
+        // ─────────────────────────────────────────────
+        // Screenshot Capture — ALL 5 sections
+        // ─────────────────────────────────────────────
+        async function captureAllSections() {
+            const sections = [
+                'section-baseline',
+                'section-competitors',
+                'section-strategy',
+                'section-swipe-file',
+                'section-engagement'
+            ];
+            const screenshots = {};
+
+            for (const sectionId of sections) {
+                const el = document.getElementById(sectionId);
+                if (!el) continue;
+
+                try {
+                    console.log(`Capturing ${sectionId}...`);
+                    const canvas = await html2canvas(el, {
+                        backgroundColor: '#0a0a0f',
+                        scale: 2,
+                        useCORS: true,
+                        logging: false
+                    });
+                    screenshots[sectionId.replace('section-', '')] = canvas.toDataURL('image/png');
+                } catch (e) {
+                    console.error(`Failed to capture ${sectionId}: `, e);
+                }
+            }
+
+            console.log(`Captured ${Object.keys(screenshots).length} sections`);
+            return screenshots;
+        }
+
+        // ─────────────────────────────────────────────
+        // Generate Slides
+        // ─────────────────────────────────────────────
+        async function generateSlides() {
+            if (!auditId) { alert('No audit loaded'); return; }
+
+            const selectedTemplate = document.getElementById('slide-template-select')?.value || 'social_media';
+
+            // Show loading overlay
+            showSlidesLoading();
+
+            try {
+                updateSlidesStatus('Capturing screenshots...');
+                const screenshots = await captureAllSections();
+
+                // Add the real Instagram profile screenshot if available (and ensure it's PNG for Google Slides)
+                if (window.auditData && window.auditData.ig_profile_screenshot) {
+                    try {
+                        let igUri = window.auditData.ig_profile_screenshot;
+                        // Convert to PNG if it's WebP or JPEG
+                        if (!igUri.startsWith('data:image/png')) {
+                            console.log('Converting IG screenshot to PNG...');
+                            igUri = await new Promise((resolve, reject) => {
+                                const img = new Image();
+                                img.crossOrigin = 'Anonymous';
+                                img.onload = () => {
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = img.width;
+                                    canvas.height = img.height;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.drawImage(img, 0, 0);
+                                    resolve(canvas.toDataURL('image/png'));
+                                };
+                                img.onerror = () => reject(new Error('Image conversion failed'));
+                                img.src = window.auditData.ig_profile_screenshot;
+                            });
+                        }
+                        screenshots['ig-profile'] = igUri;
+                    } catch (e) {
+                        console.error('Failed to parse or convert IG screenshot', e);
+                        screenshots['ig-profile'] = window.auditData.ig_profile_screenshot;
+                    }
+                }
+
+                updateSlidesStatus(`Uploading ${Object.keys(screenshots).length} screenshots...`);
+                await new Promise(r => setTimeout(r, 500));
+
+                updateSlidesStatus('Building presentation...');
+                const response = await fetch('/api/deep-audit/generate-slides', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_id: auditId,
+                        screenshots: screenshots,
+                        template_type: selectedTemplate,
+                        audit_data: { domain: window._auditProfile?.username || 'unknown' },
+                        issue_counts: {}
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.presentation_url) {
+                    console.log('✅ Slides generated:', data.presentation_url);
+                    updateSlidesStatus('✅ Slides ready!');
+                    setTimeout(() => hideSlidesLoading(), 1500);
+
+                    // Open in new tab
+                    window.open(data.presentation_url, '_blank');
+
+                    const msg = {
+                        type: 'slides-ready',
+                        presentation_url: data.presentation_url,
+                        presentation_id: data.presentation_id
+                    };
+                    window.parent.postMessage(msg, '*');
+                    setTimeout(() => window.parent.postMessage(msg, '*'), 1000);
+                    setTimeout(() => window.parent.postMessage(msg, '*'), 3000);
+                } else {
+                    throw new Error(data.error || 'Failed to generate slides');
+                }
+            } catch (err) {
+                console.error('Slide generation failed:', err);
+                updateSlidesStatus('❌ ' + err.message);
+                setTimeout(() => hideSlidesLoading(), 3000);
+                if (window.parent !== window) {
+                    window.parent.postMessage({ type: 'slides-error', error: err.message }, '*');
+                }
+            }
+        }
+
+        function showSlidesLoading() {
+            let overlay = document.getElementById('slides-loading-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'slides-loading-overlay';
+                overlay.className = 'slides-overlay';
+                overlay.innerHTML = `
+                    <div class="slides-overlay-card">
+                        <div class="animate-spin w-10 h-10 border-3 border-violet-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                        <h3 class="text-white text-lg font-semibold mb-2">Generating Slides</h3>
+                        <p class="text-gray-400 text-sm" id="slides-loading-status">Preparing...</p>
+                    </div>
+                        `;
+                document.body.appendChild(overlay);
+            }
+            overlay.style.display = 'flex';
+        }
+
+        function updateSlidesStatus(text) {
+            const el = document.getElementById('slides-loading-status');
+            if (el) el.textContent = text;
+        }
+
+        function hideSlidesLoading() {
+            const overlay = document.getElementById('slides-loading-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        // ─────────────────────────────────────────────
+        // Auto-generate (hidden iframe mode)
+        // ─────────────────────────────────────────────
+        async function autoGenerateSlides() {
+            console.log('Auto-generating slides...');
+            await new Promise(r => setTimeout(r, 2000));
+            await generateSlides();
+        }
+
+        // ─────────────────────────────────────────────
+        // Init: Load Data
+        // ─────────────────────────────────────────────
+        async function init() {
+            const params = new URLSearchParams(window.location.search);
+            auditId = params.get('audit_id');
+            const autoGenerate = params.get('auto_generate') === 'true';
+
+            if (!auditId) {
+                document.getElementById('loading-text').textContent = 'No audit ID provided';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/social-audit/${auditId}/data`);
+                const json = await res.json();
+
+                if (json.success && json.data) {
+                    window.auditData = json.data;
+                    document.getElementById('loading-state').style.display = 'none';
+                    document.getElementById('dashboard-content').style.display = 'block';
+                    populateDashboard(window.auditData);
+
+                    if (autoGenerate) {
+                        setTimeout(() => autoGenerateSlides(), 3000);
+                    }
+                } else {
+                    pollForData();
+                }
+            } catch (e) {
+                console.error('Failed to load audit data:', e);
+                document.getElementById('loading-text').textContent = 'Error loading data: ' + e.message;
+            }
+        }
+
+        async function pollForData() {
+            const poll = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/social-audit/${auditId}/status`);
+                    const status = await res.json();
+
+                    document.getElementById('loading-text').textContent =
+                        `${status.status?.replace(/_/g, ' ')}... (${status.progress || 0} %)`;
+                    document.getElementById('loading-bar').style.width = (status.progress || 0) + '%';
+
+                    if (status.status === 'completed') {
+                        clearInterval(poll);
+                        const dataRes = await fetch(`/api/social-audit/${auditId}/data`);
+                        const json = await dataRes.json();
+                        if (json.success && json.data) {
+                            auditData = json.data;
+                            document.getElementById('loading-state').style.display = 'none';
+                            document.getElementById('dashboard-content').style.display = 'block';
+                            populateDashboard(auditData);
+                        }
+                    } else if (status.status === 'failed') {
+                        clearInterval(poll);
+                        document.getElementById('loading-text').textContent = 'Audit failed: ' + (status.error || 'Unknown error');
+                    }
+                } catch (e) {
+                    console.error('Poll error:', e);
+                }
+            }, 3000);
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+
+</html>

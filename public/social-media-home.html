@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Audits</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            background: #0a0a0f;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+        }
+
+        .glow-violet {
+            box-shadow: 0 0 40px rgba(139, 92, 246, 0.12);
+        }
+
+        .status-running {
+            color: #fbbf24;
+        }
+
+        .status-completed {
+            color: #34d399;
+        }
+
+        .status-failed {
+            color: #f87171;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+    </style>
+</head>
+
+<body class="text-white min-h-screen">
+
+    <!-- Header -->
+    <div class="border-b border-gray-800/60">
+        <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div>
+                <h1
+                    class="text-2xl font-bold bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">
+                    Social Media Audits
+                </h1>
+                <p class="text-gray-500 text-sm mt-0.5">Instagram performance analysis & reel hook extraction</p>
+            </div>
+            <button onclick="openAddModal()"
+                class="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-violet-600/20">
+                <i data-lucide="plus" class="w-4 h-4"></i> New Audit
+            </button>
+        </div>
+    </div>
+
+    <!-- Audits List -->
+    <div class="max-w-6xl mx-auto px-6 py-8">
+        <div id="audits-list" class="space-y-4">
+            <!-- Filled by JS -->
+        </div>
+        <div id="empty-state" class="text-center py-24" style="display:none;">
+            <div class="text-6xl mb-4">📱</div>
+            <h3 class="text-xl font-semibold text-gray-300">No audits yet</h3>
+            <p class="text-gray-500 mt-2 mb-6">Add an Instagram profile to start your first social media audit</p>
+            <button onclick="openAddModal()"
+                class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-xl font-medium inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i> New Audit
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Profile Modal -->
+    <div id="add-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        style="display:none;">
+        <div class="glass-card glow-violet p-8 max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold text-white mb-1">New Instagram Audit</h3>
+            <p class="text-gray-400 text-sm mb-6">Enter the Instagram username to analyze</p>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Instagram Username</label>
+                    <div
+                        class="flex items-center bg-gray-900 border border-gray-700 rounded-lg overflow-hidden focus-within:border-violet-500 transition-colors">
+                        <span class="text-gray-500 px-3">@</span>
+                        <input id="input-username" type="text" placeholder="fitnessformula1"
+                            class="bg-transparent text-white px-1 py-3 flex-1 outline-none" />
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Niche / Category <span
+                            class="text-gray-600">(optional)</span></label>
+                    <input id="input-niche" type="text" placeholder="e.g. fitness, food, fashion"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Location <span class="text-gray-600">(optional, for
+                            competitor discovery)</span></label>
+                    <input id="input-location" type="text" placeholder="e.g. Mumbai, India"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Reel Recency <span class="text-gray-600">(how far
+                            back to look)</span></label>
+                    <select id="input-recency"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors">
+                        <option value="90">Last 3 months</option>
+                        <option value="180" selected>Last 6 months</option>
+                        <option value="365">Last 12 months</option>
+                        <option value="0">All time</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeAddModal()"
+                    class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-lg font-medium border border-gray-700">Cancel</button>
+                <button onclick="startAudit()" id="btn-start"
+                    class="flex-1 bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2">
+                    <i data-lucide="search" class="w-4 h-4"></i> Run Audit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slides Generation Modal -->
+    <div id="slides-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        style="display:none;">
+        <div class="glass-card glow-violet p-8 max-w-md w-full mx-4 text-center" id="slides-modal-content">
+            <div
+                class="animate-spin w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full mx-auto mb-4">
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Generating Slides</h3>
+            <p class="text-gray-400 text-sm" id="slides-modal-status">Setting up...</p>
+            <div class="w-full bg-gray-800 rounded-full h-2 mt-4">
+                <div id="slides-progress-bar" class="bg-violet-500 h-2 rounded-full transition-all" style="width: 0%">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ───────────────────────────
+        // State
+        // ───────────────────────────
+        let audits = []; // [{id, username, status, progress, niche, location, created_at}]
+        let activePolls = {}; // {auditId: intervalId}
+
+        // ───────────────────────────
+        // Formatting
+        // ───────────────────────────
+        function formatNumber(n) {
+            if (n == null) return '-';
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return String(n);
+        }
+
+        function statusLabel(status) {
+            const labels = {
+                starting: '⏳ Starting...',
+                scraping_profile: '📸 Scraping profile...',
+                scraping_reels: '🎬 Fetching reels...',
+                transcribing: '🎤 Transcribing audio...',
+                extracting_hooks: '🪝 Extracting hooks...',
+                discovering_competitors: '🔍 Finding competitors...',
+                saving: '💾 Saving...',
+                completed: '✅ Completed',
+                failed: '❌ Failed'
+            };
+            return labels[status] || status;
+        }
+
+        // ───────────────────────────
+        // Modal
+        // ───────────────────────────
+        function openAddModal() {
+            document.getElementById('add-modal').style.display = 'flex';
+            document.getElementById('input-username').focus();
+        }
+        function closeAddModal() {
+            document.getElementById('add-modal').style.display = 'none';
+        }
+
+        // ───────────────────────────
+        // Start Audit
+        // ───────────────────────────
+        async function startAudit() {
+            const username = document.getElementById('input-username').value.trim().replace('@', '');
+            const niche = document.getElementById('input-niche').value.trim();
+            const location = document.getElementById('input-location').value.trim();
+            const recency_days = parseInt(document.getElementById('input-recency').value) || 180;
+
+            if (!username) { alert('Please enter an Instagram username'); return; }
+
+            const btn = document.getElementById('btn-start');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Starting...';
+
+            try {
+                const res = await fetch('/api/social-audit/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, niche, location, recency_days })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    const audit = {
+                        id: data.audit_id,
+                        username: data.username,
+                        status: 'starting',
+                        progress: 0,
+                        niche,
+                        location,
+                        created_at: new Date().toISOString()
+                    };
+                    audits.unshift(audit);
+                    saveAudits();
+                    renderAudits();
+                    startPolling(audit.id);
+                    closeAddModal();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to start audit: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Run Audit';
+                lucide.createIcons();
+            }
+        }
+
+        // ───────────────────────────
+        // Poll Status
+        // ───────────────────────────
+        function startPolling(auditId) {
+            if (activePolls[auditId]) return;
+            activePolls[auditId] = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/social-audit/${auditId}/status`);
+                    const data = await res.json();
+
+                    const audit = audits.find(a => a.id === auditId);
+                    if (audit) {
+                        audit.status = data.status;
+                        audit.progress = data.progress || 0;
+                        audit.error = data.error;
+                        saveAudits();
+                        renderAudits();
+                    }
+
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        clearInterval(activePolls[auditId]);
+                        delete activePolls[auditId];
+                    }
+                } catch (e) {
+                    console.error('Poll error:', e);
+                }
+            }, 4000);
+        }
+
+        // ───────────────────────────
+        // Render
+        // ───────────────────────────
+        function renderAudits() {
+            const list = document.getElementById('audits-list');
+            const empty = document.getElementById('empty-state');
+
+            if (audits.length === 0) {
+                list.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+
+            list.style.display = 'block';
+            empty.style.display = 'none';
+
+            list.innerHTML = audits.map(a => {
+                const isRunning = !['completed', 'failed'].includes(a.status);
+                const isComplete = a.status === 'completed';
+                const isFailed = a.status === 'failed';
+
+                const createdDate = a.created_at ? new Date(a.created_at).toLocaleString() : '';
+
+                return `
+                    <div class="glass-card p-5 flex items-center gap-5 transition-all hover:border-gray-600/30">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center text-xl font-bold shrink-0">
+                            ${a.username ? a.username[0].toUpperCase() : '?'}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-semibold text-white">@${a.username}</h3>
+                                ${createdDate ? `<span class="text-xs text-gray-500 font-normal ml-2">${createdDate}</span>` : ''}
+                                ${a.niche ? `<span class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">${a.niche}</span>` : ''}
+                                ${a.location ? `<span class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">📍 ${a.location}</span>` : ''}
+                            </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                ${isRunning ? `<div class="pulse-dot bg-yellow-400"></div>` : ''}
+                                <span class="text-sm ${isFailed ? 'status-failed' : isComplete ? 'status-completed' : 'status-running'}">
+                                    ${statusLabel(a.status)}
+                                </span>
+                                ${a.error ? `<span class="text-xs text-red-400 ml-2">${a.error}</span>` : ''}
+                            </div>
+                            ${isRunning ? `
+                                <div class="w-48 bg-gray-800 rounded-full h-1.5 mt-2">
+                                    <div class="bg-violet-500 h-1.5 rounded-full transition-all" style="width: ${a.progress}%"></div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${isComplete ? `
+                                <button onclick="viewResults('${a.id}')" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium border border-gray-700 flex items-center gap-1.5">
+                                    <i data-lucide="eye" class="w-3.5 h-3.5"></i> View
+                                </button>
+                                <button onclick="createSlides('${a.id}')" class="bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 px-4 py-2 rounded-lg text-sm font-medium border border-violet-500/20 flex items-center gap-1.5">
+                                    <i data-lucide="presentation" class="w-3.5 h-3.5"></i> Create Slides
+                                </button>
+                            ` : ''}
+                            <button onclick="deleteAudit('${a.id}')" class="text-gray-600 hover:text-red-400 p-2 rounded-lg transition-colors" title="Delete">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // ───────────────────────────
+        // Actions
+        // ───────────────────────────
+        function viewResults(auditId) {
+            // Use window.top.open to ensure it opens in a new tab even if embedded in iframe
+            (window.top || window).open(`/social-media-dashboard.html?audit_id=${auditId}`, '_blank');
+        }
+
+        function createSlides(auditId) {
+            const modal = document.getElementById('slides-modal');
+            modal.style.display = 'flex';
+
+            // Create hidden iframe with timestamp to prevent cache
+            const iframe = document.createElement('iframe');
+            iframe.id = 'slideGenIframe';
+            iframe.src = `/social-media-dashboard.html?audit_id=${auditId}&auto_generate=true&template_type=social_media&t=${Date.now()}`;
+            iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1400px;height:900px;opacity:0;pointer-events:none;';
+            document.body.appendChild(iframe);
+
+            let slidesDone = false;
+            const progressSteps = [
+                [3000, 15, 'Loading audit data...'],
+                [8000, 30, 'Rendering dashboard...'],
+                [15000, 50, 'Capturing screenshots...'],
+                [25000, 70, 'Building Google Slides...'],
+                [40000, 85, 'Finalizing presentation...']
+            ];
+            progressSteps.forEach(([delay, pct, msg]) => {
+                setTimeout(() => {
+                    if (slidesDone) return;
+                    document.getElementById('slides-progress-bar').style.width = pct + '%';
+                    document.getElementById('slides-modal-status').textContent = msg;
+                }, delay);
+            });
+
+            // Listen for postMessage
+            const handler = (event) => {
+                // Ignore messages that don't look like our slides message
+                if (!event.data || typeof event.data !== 'object') return;
+
+                if (event.data.type === 'slides-ready') {
+                    slidesDone = true;
+                    clearInterval(pollInterval);
+                    window.removeEventListener('message', handler);
+                    const iframeEl = document.getElementById('slideGenIframe');
+                    if (iframeEl) iframeEl.remove();
+
+                    document.getElementById('slides-modal-content').innerHTML = `
+                        <div class="text-5xl mb-4">🎉</div>
+                        <h3 class="text-xl font-bold text-white mb-2">Presentation Ready!</h3>
+                        <p class="text-gray-400 text-sm mb-6">Your social media audit slides are ready</p>
+                        <div class="flex gap-3 justify-center">
+                            <a href="${event.data.presentation_url}" target="_blank" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2.5 rounded-lg font-medium">Open Slides</a>
+                            <button onclick="document.getElementById('slides-modal').style.display='none'" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-2.5 rounded-lg font-medium border border-gray-700">Close</button>
+                        </div>
+                    `;
+                } else if (event.data?.type === 'slides-error') {
+                    slidesDone = true;
+                    clearInterval(pollInterval);
+                    window.removeEventListener('message', handler);
+                    const iframeEl = document.getElementById('slideGenIframe');
+                    if (iframeEl) iframeEl.remove();
+
+                    document.getElementById('slides-modal-content').innerHTML = `
+                        <div class="text-5xl mb-4">❌</div>
+                        <h3 class="text-xl font-bold text-white mb-2">Generation Failed</h3>
+                        <p class="text-red-400 text-sm mb-6">${event.data.error || 'Unknown error'}</p>
+                        <button onclick="document.getElementById('slides-modal').style.display='none'" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-2.5 rounded-lg font-medium border border-gray-700">Close</button>
+                    `;
+                }
+            };
+            window.addEventListener('message', handler);
+
+            // Polling fallback
+            const pollInterval = setInterval(async () => {
+                if (slidesDone) { clearInterval(pollInterval); return; }
+                try {
+                    const res = await fetch(`/api/social-audit/${auditId}/data`);
+                    const data = await res.json();
+                    // Check if presentation_url exists in supabase audit record
+                    // (would be set by backend after slide generation)
+                } catch (e) { }
+            }, 15000);
+
+            // Timeout
+            setTimeout(() => {
+                if (slidesDone) return;
+                slidesDone = true;
+                clearInterval(pollInterval);
+                window.removeEventListener('message', handler);
+                const iframeEl = document.getElementById('slideGenIframe');
+                if (iframeEl) iframeEl.remove();
+                document.getElementById('slides-modal-content').innerHTML = `
+                    <div class="text-5xl mb-4">⏱️</div>
+                    <h3 class="text-xl font-bold text-white mb-2">Generation Timed Out</h3>
+                    <p class="text-gray-400 text-sm mb-6">This may take longer than expected. Check your Google Drive for the presentation.</p>
+                    <button onclick="document.getElementById('slides-modal').style.display='none'" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-2.5 rounded-lg font-medium border border-gray-700">Close</button>
+                `;
+            }, 480000); // 8 minutes
+        }
+
+        function deleteAudit(auditId) {
+            if (!confirm('Delete this audit?')) return;
+            if (activePolls[auditId]) {
+                clearInterval(activePolls[auditId]);
+                delete activePolls[auditId];
+            }
+            audits = audits.filter(a => a.id !== auditId);
+            saveAudits();
+            renderAudits();
+        }
+
+        // ───────────────────────────
+        // Persistence (localStorage)
+        // ───────────────────────────
+        function saveAudits() {
+            localStorage.setItem('social_audits', JSON.stringify(audits));
+        }
+        function loadAudits() {
+            try {
+                const saved = localStorage.getItem('social_audits');
+                if (saved) audits = JSON.parse(saved);
+            } catch (e) { }
+        }
+
+        // ───────────────────────────
+        // Init
+        // ───────────────────────────
+        function init() {
+            loadAudits();
+            renderAudits();
+
+            // Resume polling for any still-running audits
+            audits.forEach(a => {
+                if (!['completed', 'failed'].includes(a.status)) {
+                    startPolling(a.id);
+                }
+            });
+
+            lucide.createIcons();
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
