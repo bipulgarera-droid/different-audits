@@ -343,17 +343,19 @@ def discover_competitors(niche_keyword, location="", min_followers=50000, max_fo
     # E.g., if location is "Delhi", searching "India" finds the massive accounts we want to emulate.
     queries = [
         f"site:instagram.com {niche_keyword} {location}".strip(),
-        f"site:instagram.com {niche_keyword} india" if "india" not in location.lower() else f"site:instagram.com top {niche_keyword}"
+        f"site:instagram.com {niche_keyword} india" if "india" not in location.lower() else f"site:instagram.com top {niche_keyword}",
+        f"site:instagram.com \"creator\" OR \"public figure\" {niche_keyword}",
+        f"site:instagram.com best {niche_keyword} influencer {location}".strip()
     ]
     
     usernames = []
     
     for query in queries:
         logger.info(f"Step 1: Google search: '{query}'")
-        google_results = _run_actor("apify/google-search-scraper", {
+        google_results = _run_actor_async("apify/google-search-scraper", {
             "queries": query,
-            "maxPagesPerQuery": 1,
-            "resultsPerPage": 20
+            "maxPagesPerQuery": 2,
+            "resultsPerPage": 30
         }, timeout_secs=120)
         
         for page in google_results:
@@ -374,12 +376,12 @@ def discover_competitors(niche_keyword, location="", min_followers=50000, max_fo
         return []
         
     # We fetch a larger batch because we'll filter many out based on follower counts
-    fetch_limit = min(limit * 3, 30)
+    fetch_limit = min(limit * 4, 40)
     target_usernames = usernames[:fetch_limit]
     
     logger.info(f"Step 2: Extracted {len(usernames)} usernames. Scraping top {len(target_usernames)} to check follower counts...")
     
-    profiles = _run_actor("apify/instagram-profile-scraper", {
+    profiles = _run_actor_async("apify/instagram-profile-scraper", {
         "usernames": target_usernames
     }, timeout_secs=180)
     
@@ -455,10 +457,10 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     logger.info(f"Influencer Discovery: Instagram search '{search_query}' ({min_followers}-{max_followers} followers)")
     
     # Step 1: Search Instagram directly for users
-    search_results = _run_actor_async("apify/instagram-search", {
-        "queries": [search_query],
-        "searchType": "users",
-        "resultsLimit": min(limit * 4, 80)  # Fetch extra to account for filtering
+    search_results = _run_actor_async("apify/instagram-search-scraper", {
+        "search": search_query,
+        "searchType": "user",
+        "resultsLimit": min(limit * 5, 100)  # Fetch extra to account for filtering
     }, timeout_secs=120)
     
     if not search_results:
@@ -545,25 +547,32 @@ def _find_influencers_google_fallback(niche_keyword, location="", min_followers=
     """Fallback: use Google search if Instagram search returns nothing."""
     import re
     
-    query = f"site:instagram.com {niche_keyword} {location}".strip()
-    logger.info(f"Fallback: Google search '{query}'")
-    
-    google_results = _run_actor_async("apify/google-search-scraper", {
-        "queries": query,
-        "maxPagesPerQuery": 2,
-        "resultsPerPage": 30
-    }, timeout_secs=120)
+    # Use multiple queries to cast a wider net
+    queries = [
+        f"site:instagram.com {niche_keyword} {location}".strip(),
+        f"site:instagram.com \"creator\" OR \"public figure\" {niche_keyword} {location}".strip(),
+        f"site:instagram.com best {niche_keyword} influencer {location}".strip(),
+        f"site:instagram.com top {niche_keyword} blogger {location}".strip()
+    ]
     
     usernames = []
-    for page in google_results:
-        for result in page.get("organicResults", []):
-            url = result.get("url", "")
-            match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url)
-            if match:
-                username = match.group(1)
-                skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
-                if username.lower() not in skip:
-                    usernames.append(username)
+    for query in queries:
+        logger.info(f"Fallback: Google search '{query}'")
+        google_results = _run_actor_async("apify/google-search-scraper", {
+            "queries": query,
+            "maxPagesPerQuery": 2,
+            "resultsPerPage": 30
+        }, timeout_secs=120)
+        
+        for page in google_results:
+            for result in page.get("organicResults", []):
+                url = result.get("url", "")
+                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url)
+                if match:
+                    username = match.group(1)
+                    skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                    if username.lower() not in skip:
+                        usernames.append(username)
     
     usernames = list(dict.fromkeys(usernames))
     if not usernames:
