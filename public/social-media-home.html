@@ -795,7 +795,7 @@
                                 <button onclick="generateCompetitors('${p.id}')" class="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-700 flex items-center gap-1">
                                     <i data-lucide="search" class="w-3 h-3"></i> Find Competitors
                                 </button>` : ''}
-                            ${comps.length > 0 && p.status !== 'analyzing' && p.status !== 'analyzed' ? `
+                            ${comps.length > 0 && !isProcessing ? `
                                 <button onclick="analyzeProspect('${p.id}')" class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
                                     <i data-lucide="zap" class="w-3 h-3"></i> Run Analysis
                                 </button>` : ''}
@@ -879,7 +879,7 @@
             const recencyInput = prompt('Reel Recency in days (e.g., 30, 90, 180):', '180');
             if (recencyInput === null) return; // User cancelled
             const recency_days = parseInt(recencyInput) || 180;
-            
+
             try {
                 const res = await fetch(`/api/influencers/${prospectId}/analyze`, {
                     method: 'POST',
