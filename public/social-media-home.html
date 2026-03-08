@@ -381,7 +381,6 @@
                 if (discoveredInfluencers.length > 0) {
                     document.getElementById('disc-list').innerHTML = discoveredInfluencers.map(inf => `
                         <div class="glass-card p-4 flex gap-4 items-start border border-gray-700/50 hover:border-violet-500/50 transition-colors">
-                            <img src="${inf.profile_pic_url || 'https://via.placeholder.com/150'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/150'"/>
                             <div class="flex-1 min-w-0">
                                 <div class="flex justify-between items-start">
                                     <h4 class="font-bold text-white truncate"><a href="https://instagram.com/${inf.username}" target="_blank" class="hover:text-violet-400">@${inf.username}</a></h4>
@@ -777,12 +776,11 @@
                 const comps = p.competitors_data || [];
                 const isProcessing = ['finding_competitors', 'analyzing'].includes(p.status);
                 return `
-                <div class="glass-card p-5 flex gap-4 items-start">
-                    <img src="${p.profile_pic_url || 'https://via.placeholder.com/80'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/80'"/>
+                <div class="glass-card p-5 cursor-pointer hover:border-violet-500/50 transition-colors" onclick="toggleCompetitors('${p.id}')">
                     <div class="flex-1 min-w-0">
                         <div class="flex justify-between items-start">
                             <div>
-                                <h4 class="font-bold text-white"><a href="https://instagram.com/${p.username}" target="_blank" class="hover:text-violet-400">@${p.username}</a></h4>
+                                <h4 class="font-bold text-white"><a href="https://instagram.com/${p.username}" target="_blank" class="hover:text-violet-400" onclick="event.stopPropagation()">@${p.username}</a></h4>
                                 <p class="text-xs text-gray-400">${p.full_name || ''} · ${p.niche || ''}</p>
                             </div>
                             <span class="text-xs ${isProcessing ? 'text-yellow-400' : p.status === 'analyzed' ? 'text-green-400' : 'text-gray-400'}">${prospectStatusLabel(p.status)}</span>
@@ -792,7 +790,7 @@
                             <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded">Eng: ${p.engagement_rate}%</span>
                             ${comps.length > 0 ? `<span class="bg-green-600/20 text-green-400 px-2 py-0.5 rounded">${comps.length} competitors</span>` : ''}
                         </div>
-                        <div class="flex gap-2 flex-wrap">
+                        <div class="flex gap-2 flex-wrap" onclick="event.stopPropagation()">
                             ${!isProcessing && p.status !== 'analyzed' ? `
                                 <button onclick="generateCompetitors('${p.id}')" class="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-700 flex items-center gap-1">
                                     <i data-lucide="search" class="w-3 h-3"></i> Find Competitors
@@ -808,6 +806,27 @@
                             <button onclick="deleteProspect('${p.id}')" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-lg flex items-center gap-1">
                                 <i data-lucide="trash-2" class="w-3 h-3"></i>
                             </button>
+                        </div>
+                        
+                        <!-- Competitors Expandable Section -->
+                        <div id="comps-${p.id}" class="hidden mt-4 pt-4 border-t border-gray-700/50" onclick="event.stopPropagation()">
+                            <h5 class="text-sm font-semibold text-white mb-3">Competitors</h5>
+                            ${comps.length === 0 ? '<p class="text-xs text-gray-500">No competitors found yet.</p>' :
+                        `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  ${comps.map(c => `
+                                      <div class="bg-gray-800/50 rounded p-3 border border-gray-700/50">
+                                          <div class="flex justify-between items-start">
+                                            <a href="https://instagram.com/${c.username}" target="_blank" class="text-sm font-bold text-white hover:text-violet-400">@${c.username}</a>
+                                          </div>
+                                          <div class="flex flex-wrap gap-2 text-[10px] mt-1">
+                                              <span class="bg-violet-600/20 text-violet-400 px-1.5 py-0.5 rounded">${formatNumber(c.followers)} followers</span>
+                                              <span class="bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">Eng: ${c.engagement_rate}%</span>
+                                            ${c.is_verified ? '<span class="text-blue-400"><i data-lucide="check-circle-2" class="w-3 h-3 inline"></i></span>' : ''}
+                                          </div>
+                                      </div>
+                                  `).join('')}
+                              </div>`
+                    }
                         </div>
                     </div>
                 </div>`;
@@ -827,6 +846,17 @@
                     }, 5000);
                 }
             });
+        }
+
+        function toggleCompetitors(id) {
+            const el = document.getElementById('comps-' + id);
+            if (el) {
+                if (el.classList.contains('hidden')) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            }
         }
 
         async function generateCompetitors(prospectId) {
