@@ -361,6 +361,53 @@ def create_deep_audit_slides(data, domain, creds=None, screenshots=None, annotat
         
         if screenshots:
             for key, title in slide_map:
+                if key == 'swipe-file':
+                    has_split_swipe = screenshots.get('swipe-file-1') and screenshots.get('swipe-file-2')
+                    has_single_swipe = screenshots.get('swipe-file')
+                    
+                    if has_split_swipe:
+                        print(f"SOCIAL MEDIA SLIDES: Adding split slide 'Viral Swipe File'", file=sys.stderr)
+                        sid = generate_id()
+                        requests.extend([
+                            {'createSlide': {'objectId': sid, 'slideLayoutReference': {'predefinedLayout': 'BLANK'}}},
+                            {'updatePageProperties': {'objectId': sid, 'pageProperties': {'pageBackgroundFill': {'solidFill': {'color': {'rgbColor': dark_bg}}}}, 'fields': 'pageBackgroundFill'}},
+                            {'createImage': {
+                                'objectId': f"{sid}_img1",
+                                'url': screenshots['swipe-file-1'],
+                                'elementProperties': {
+                                    'pageObjectId': sid,
+                                    'size': {'height': {'magnitude': 380, 'unit': 'PT'}, 'width': {'magnitude': 345, 'unit': 'PT'}},
+                                    'transform': {'scaleX': 1, 'scaleY': 1, 'translateX': 10, 'translateY': 12, 'unit': 'PT'}
+                                }
+                            }},
+                            {'createImage': {
+                                'objectId': f"{sid}_img2",
+                                'url': screenshots['swipe-file-2'],
+                                'elementProperties': {
+                                    'pageObjectId': sid,
+                                    'size': {'height': {'magnitude': 380, 'unit': 'PT'}, 'width': {'magnitude': 345, 'unit': 'PT'}},
+                                    'transform': {'scaleX': 1, 'scaleY': 1, 'translateX': 365, 'translateY': 12, 'unit': 'PT'}
+                                }
+                            }},
+                        ])
+                    elif has_single_swipe:
+                        print(f"SOCIAL MEDIA SLIDES: Adding single slide 'Viral Swipe File'", file=sys.stderr)
+                        sid = generate_id()
+                        requests.extend([
+                            {'createSlide': {'objectId': sid, 'slideLayoutReference': {'predefinedLayout': 'BLANK'}}},
+                            {'updatePageProperties': {'objectId': sid, 'pageProperties': {'pageBackgroundFill': {'solidFill': {'color': {'rgbColor': dark_bg}}}}, 'fields': 'pageBackgroundFill'}},
+                            {'createImage': {
+                                'objectId': f"{sid}_img",
+                                'url': screenshots['swipe-file'],
+                                'elementProperties': {
+                                    'pageObjectId': sid,
+                                    'size': {'height': {'magnitude': 380, 'unit': 'PT'}, 'width': {'magnitude': 700, 'unit': 'PT'}},
+                                    'transform': {'scaleX': 1, 'scaleY': 1, 'translateX': 10, 'translateY': 12, 'unit': 'PT'}
+                                }
+                            }},
+                        ])
+                    continue
+                
                 img_url = screenshots.get(key)
                 if not img_url:
                     print(f"SOCIAL MEDIA SLIDES: Skipping {key} — no screenshot", file=sys.stderr)

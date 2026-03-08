@@ -690,17 +690,49 @@
                 const el = document.getElementById(sectionId);
                 if (!el) continue;
 
-                try {
-                    console.log(`Capturing ${sectionId}...`);
-                    const canvas = await html2canvas(el, {
-                        backgroundColor: '#0a0a0f',
-                        scale: 2,
-                        useCORS: true,
-                        logging: false
-                    });
-                    screenshots[sectionId.replace('section-', '')] = canvas.toDataURL('image/png');
-                } catch (e) {
-                    console.error(`Failed to capture ${sectionId}: `, e);
+                if (sectionId === 'section-swipe-file') {
+                    try {
+                        console.log(`Capturing ${sectionId} (split check)...`);
+                        const tbody = document.getElementById('reels-table-body');
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                        if (rows.length > 5) {
+                            const mid = Math.ceil(rows.length / 2);
+
+                            // Hide second half, capture first half
+                            for (let i = mid; i < rows.length; i++) rows[i].style.display = 'none';
+                            const canvas1 = await html2canvas(el, { backgroundColor: '#0a0a0f', scale: 2, useCORS: true, logging: false });
+                            screenshots['swipe-file-1'] = canvas1.toDataURL('image/png');
+
+                            // Hide first half, show second half, capture
+                            for (let i = 0; i < mid; i++) rows[i].style.display = 'none';
+                            for (let i = mid; i < rows.length; i++) rows[i].style.display = '';
+                            const canvas2 = await html2canvas(el, { backgroundColor: '#0a0a0f', scale: 2, useCORS: true, logging: false });
+                            screenshots['swipe-file-2'] = canvas2.toDataURL('image/png');
+
+                            // Restore all rows
+                            for (let i = 0; i < rows.length; i++) rows[i].style.display = '';
+                        } else {
+                            // Standard single capture if 5 or fewer items
+                            const canvas = await html2canvas(el, { backgroundColor: '#0a0a0f', scale: 2, useCORS: true, logging: false });
+                            screenshots['swipe-file'] = canvas.toDataURL('image/png');
+                        }
+                    } catch (e) {
+                        console.error(`Failed to capture ${sectionId}: `, e);
+                    }
+                } else {
+                    try {
+                        console.log(`Capturing ${sectionId}...`);
+                        const canvas = await html2canvas(el, {
+                            backgroundColor: '#0a0a0f',
+                            scale: 2,
+                            useCORS: true,
+                            logging: false
+                        });
+                        screenshots[sectionId.replace('section-', '')] = canvas.toDataURL('image/png');
+                    } catch (e) {
+                        console.error(`Failed to capture ${sectionId}: `, e);
+                    }
                 }
             }
 
