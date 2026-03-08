@@ -69,15 +69,34 @@
                 </h1>
                 <p class="text-gray-500 text-sm mt-0.5">Instagram performance analysis & reel hook extraction</p>
             </div>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="openDiscoverModal()"
+                class="bg-gray-800 hover:bg-gray-700 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg border border-gray-700">
+                <i data-lucide="users" class="w-4 h-4"></i> Discover
+            </button>
             <button onclick="openAddModal()"
                 class="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg shadow-violet-600/20">
                 <i data-lucide="plus" class="w-4 h-4"></i> New Audit
             </button>
         </div>
     </div>
+    </div>
 
-    <!-- Audits List -->
-    <div class="max-w-6xl mx-auto px-6 py-8">
+    <!-- Tab Navigation -->
+    <div class="max-w-6xl mx-auto px-6 pt-6">
+        <div class="flex gap-1 border-b border-gray-800">
+            <button id="tab-audits" onclick="switchTab('audits')"
+                class="px-5 py-3 text-sm font-medium rounded-t-lg transition-colors text-violet-400 bg-violet-600/10 border-b-2 border-violet-500">Audits</button>
+            <button id="tab-prospects" onclick="switchTab('prospects')"
+                class="px-5 py-3 text-sm font-medium rounded-t-lg transition-colors text-gray-400 hover:text-white">Prospects
+                <span id="prospect-count-badge"
+                    class="ml-1 bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded text-xs">0</span></button>
+        </div>
+    </div>
+
+    <!-- Audits Tab -->
+    <div id="panel-audits" class="max-w-6xl mx-auto px-6 py-8">
         <div id="audits-list" class="space-y-4">
             <!-- Filled by JS -->
         </div>
@@ -88,6 +107,20 @@
             <button onclick="openAddModal()"
                 class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-xl font-medium inline-flex items-center gap-2">
                 <i data-lucide="plus" class="w-4 h-4"></i> New Audit
+            </button>
+        </div>
+    </div>
+
+    <!-- Prospects Tab -->
+    <div id="panel-prospects" class="max-w-6xl mx-auto px-6 py-8" style="display:none;">
+        <div id="prospects-list" class="space-y-4"></div>
+        <div id="prospects-empty" class="text-center py-24">
+            <div class="text-6xl mb-4">🔍</div>
+            <h3 class="text-xl font-semibold text-gray-300">No saved prospects</h3>
+            <p class="text-gray-500 mt-2 mb-6">Use the Discover button to find influencers and save them here</p>
+            <button onclick="openDiscoverModal()"
+                class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-xl font-medium inline-flex items-center gap-2">
+                <i data-lucide="users" class="w-4 h-4"></i> Discover Influencers
             </button>
         </div>
     </div>
@@ -141,6 +174,64 @@
                     class="flex-1 bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2">
                     <i data-lucide="search" class="w-4 h-4"></i> Run Audit
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Discover Influencers Modal -->
+    <div id="discover-modal"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10"
+        style="display:none;">
+        <div class="glass-card glow-violet p-8 max-w-4xl w-full mx-4 relative">
+            <button onclick="closeDiscoverModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+            <h3 class="text-xl font-bold text-white mb-1">Discover Influencers</h3>
+            <p class="text-gray-400 text-sm mb-6">Find creators by niche and follower size</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Niche/Keyword <span
+                            class="text-red-400">*</span></label>
+                    <input id="disc-niche" type="text" placeholder="e.g. fitness coach"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Location</label>
+                    <input id="disc-location" type="text" placeholder="e.g. London"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Min Followers</label>
+                    <input id="disc-min" type="number" value="10000"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Max Followers</label>
+                    <input id="disc-max" type="number" value="100000"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+            </div>
+
+            <button onclick="runDiscovery()" id="btn-discover"
+                class="w-full bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 mb-6 transition-all">
+                <i data-lucide="search" class="w-4 h-4"></i> Search Influencers
+            </button>
+
+            <!-- Results Section -->
+            <div id="disc-results" class="hidden">
+                <div class="flex justify-between items-center mb-4 border-t border-gray-800 pt-6">
+                    <h4 class="text-lg font-semibold text-white">Results (<span id="disc-count">0</span>)</h4>
+                    <button id="btn-save-prospects" onclick="saveToDashboard()"
+                        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all">
+                        <i data-lucide="save" class="w-4 h-4"></i> Save to Dashboard
+                    </button>
+                </div>
+
+                <div id="disc-list"
+                    class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                    <!-- Influencers injected here -->
+                </div>
             </div>
         </div>
     </div>
@@ -203,6 +294,118 @@
         function closeAddModal() {
             document.getElementById('add-modal').style.display = 'none';
         }
+
+        // ───────────────────────────
+        // Discover Modal + Logic
+        // ───────────────────────────
+        let discoveredInfluencers = [];
+
+        function openDiscoverModal() {
+            document.getElementById('discover-modal').style.display = 'flex';
+            document.getElementById('disc-niche').focus();
+        }
+        function closeDiscoverModal() {
+            document.getElementById('discover-modal').style.display = 'none';
+        }
+
+        async function runDiscovery() {
+            const niche = document.getElementById('disc-niche').value.trim();
+            const location = document.getElementById('disc-location').value.trim();
+            const minStr = document.getElementById('disc-min').value;
+            const maxStr = document.getElementById('disc-max').value;
+
+            if (!niche) { alert("Please enter a niche keyword (e.g., 'fitness')"); return; }
+
+            const btn = document.getElementById('btn-discover');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Searching over 20+ profiles... (takes ~2 mins)';
+
+            document.getElementById('disc-results').classList.add('hidden');
+            document.getElementById('disc-list').innerHTML = '';
+
+            try {
+                const res = await fetch('/api/influencers/discover', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        niche, location,
+                        min_followers: parseInt(minStr) || 10000,
+                        max_followers: parseInt(maxStr) || 100000,
+                        limit: 20
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    discoveredInfluencers = data.influencers || [];
+                    document.getElementById('disc-count').innerText = discoveredInfluencers.length;
+
+                    if (discoveredInfluencers.length > 0) {
+                        document.getElementById('disc-list').innerHTML = discoveredInfluencers.map(inf => `
+                            <div class="glass-card p-4 flex gap-4 items-start border border-gray-700/50 hover:border-violet-500/50 transition-colors">
+                                <img src="${inf.profile_pic_url || 'https://via.placeholder.com/150'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/150'"/>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-start">
+                                        <h4 class="font-bold text-white truncate"><a href="https://instagram.com/${inf.username}" target="_blank" class="hover:text-violet-400">@${inf.username}</a></h4>
+                                        ${inf.is_verified ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-blue-400 shrink-0"></i>' : ''}
+                                    </div>
+                                    <p class="text-xs text-gray-400 mb-1 truncate">${inf.full_name || ''}</p>
+                                    <div class="flex flex-wrap gap-2 text-xs mb-2">
+                                        <span class="bg-violet-600/20 text-violet-400 px-2 py-0.5 rounded font-medium">${formatNumber(inf.followers)} followers</span>
+                                        <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded">Eng: ${inf.engagement_rate}%</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 line-clamp-2">${inf.bio || ''}</p>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        document.getElementById('disc-list').innerHTML = '<p class="text-gray-400 col-span-2 text-center py-4">No influencers found matching that criteria.</p>';
+                    }
+
+                    document.getElementById('disc-results').classList.remove('hidden');
+                    lucide.createIcons();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (err) {
+                alert('Request failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Search Influencers';
+                lucide.createIcons();
+            }
+        }
+
+        async function saveToDashboard() {
+            if (discoveredInfluencers.length === 0) return;
+            const niche = document.getElementById('disc-niche').value.trim();
+            const btn = document.getElementById('btn-save-prospects');
+            const originalContent = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Saving...';
+
+            try {
+                const res = await fetch('/api/influencers/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ influencers: discoveredInfluencers, niche })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Saved ' + data.saved + ' prospects!';
+                    setTimeout(() => { btn.innerHTML = originalContent; btn.disabled = false; lucide.createIcons(); }, 3000);
+                    loadProspects();
+                } else {
+                    alert('Error: ' + data.error);
+                    btn.innerHTML = originalContent; btn.disabled = false;
+                }
+            } catch (err) {
+                alert('Save failed: ' + err.message);
+                btn.innerHTML = originalContent; btn.disabled = false;
+            }
+        }
+
 
         // ───────────────────────────
         // Start Audit
@@ -477,11 +680,214 @@
         }
 
         // ───────────────────────────
+        // Tab Switching
+        // ───────────────────────────
+        function switchTab(tab) {
+            const tabs = ['audits', 'prospects'];
+            tabs.forEach(t => {
+                document.getElementById('panel-' + t).style.display = t === tab ? 'block' : 'none';
+                const tabBtn = document.getElementById('tab-' + t);
+                if (t === tab) {
+                    tabBtn.className = 'px-5 py-3 text-sm font-medium rounded-t-lg transition-colors text-violet-400 bg-violet-600/10 border-b-2 border-violet-500';
+                } else {
+                    tabBtn.className = 'px-5 py-3 text-sm font-medium rounded-t-lg transition-colors text-gray-400 hover:text-white';
+                }
+            });
+            if (tab === 'prospects') loadProspects();
+        }
+
+        // ───────────────────────────
+        // Prospects Logic
+        // ───────────────────────────
+        let prospects = [];
+        let prospectPolls = {};
+
+        async function loadProspects() {
+            try {
+                const res = await fetch('/api/influencers/list');
+                const data = await res.json();
+                if (data.success) {
+                    prospects = data.prospects || [];
+                    document.getElementById('prospect-count-badge').innerText = prospects.length;
+                    renderProspects();
+                }
+            } catch (e) { console.error('Load prospects error:', e); }
+        }
+
+        function prospectStatusLabel(status) {
+            const map = {
+                new: '🆕 New',
+                finding_competitors: '🔍 Finding competitors...',
+                competitors_found: '✅ Competitors ready',
+                competitor_error: '❌ Competitor search failed',
+                analyzing: '⚙️ Analyzing...',
+                analyzed: '📊 Analysis complete',
+                analysis_error: '❌ Analysis failed'
+            };
+            return map[status] || status;
+        }
+
+        function renderProspects() {
+            const list = document.getElementById('prospects-list');
+            const empty = document.getElementById('prospects-empty');
+
+            if (prospects.length === 0) {
+                list.style.display = 'none';
+                empty.style.display = 'block';
+                return;
+            }
+            list.style.display = 'block';
+            empty.style.display = 'none';
+
+            list.innerHTML = prospects.map(p => {
+                const comps = p.competitors_data || [];
+                const isProcessing = ['finding_competitors', 'analyzing'].includes(p.status);
+                return `
+                <div class="glass-card p-5 flex gap-4 items-start">
+                    <img src="${p.profile_pic_url || 'https://via.placeholder.com/80'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/80'"/>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-bold text-white"><a href="https://instagram.com/${p.username}" target="_blank" class="hover:text-violet-400">@${p.username}</a></h4>
+                                <p class="text-xs text-gray-400">${p.full_name || ''} · ${p.niche || ''}</p>
+                            </div>
+                            <span class="text-xs ${isProcessing ? 'text-yellow-400' : p.status === 'analyzed' ? 'text-green-400' : 'text-gray-400'}">${prospectStatusLabel(p.status)}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-2 text-xs mt-2 mb-3">
+                            <span class="bg-violet-600/20 text-violet-400 px-2 py-0.5 rounded font-medium">${formatNumber(p.followers)} followers</span>
+                            <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded">Eng: ${p.engagement_rate}%</span>
+                            ${comps.length > 0 ? `<span class="bg-green-600/20 text-green-400 px-2 py-0.5 rounded">${comps.length} competitors</span>` : ''}
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            ${!isProcessing && p.status !== 'analyzed' ? `
+                                <button onclick="generateCompetitors('${p.id}')" class="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg border border-gray-700 flex items-center gap-1">
+                                    <i data-lucide="search" class="w-3 h-3"></i> Find Competitors
+                                </button>` : ''}
+                            ${comps.length > 0 && p.status !== 'analyzing' && p.status !== 'analyzed' ? `
+                                <button onclick="analyzeProspect('${p.id}')" class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                    <i data-lucide="zap" class="w-3 h-3"></i> Run Analysis
+                                </button>` : ''}
+                            ${p.status === 'analyzed' ? `
+                                <button onclick="viewAnalysis('${p.id}')" class="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                    <i data-lucide="bar-chart-3" class="w-3 h-3"></i> View Results
+                                </button>` : ''}
+                            <button onclick="deleteProspect('${p.id}')" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+            lucide.createIcons();
+
+            // Start polling for processing prospects
+            prospects.filter(p => ['finding_competitors', 'analyzing'].includes(p.status)).forEach(p => {
+                if (!prospectPolls[p.id]) {
+                    prospectPolls[p.id] = setInterval(async () => {
+                        await loadProspects();
+                        const updated = prospects.find(x => x.id === p.id);
+                        if (updated && !['finding_competitors', 'analyzing'].includes(updated.status)) {
+                            clearInterval(prospectPolls[p.id]);
+                            delete prospectPolls[p.id];
+                        }
+                    }, 5000);
+                }
+            });
+        }
+
+        async function generateCompetitors(prospectId) {
+            const niche = prompt('Niche for competitors (leave blank to use prospect niche):') || '';
+            try {
+                const res = await fetch(`/api/influencers/${prospectId}/competitors`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ niche, min_followers: 50000, max_followers: 500000, limit: 5 })
+                });
+                const data = await res.json();
+                if (data.success) { loadProspects(); } else { alert('Error: ' + data.error); }
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function analyzeProspect(prospectId) {
+            try {
+                const res = await fetch(`/api/influencers/${prospectId}/analyze`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) { loadProspects(); } else { alert('Error: ' + data.error); }
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function viewAnalysis(prospectId) {
+            // For now, open the social audit results page with this prospect's data
+            // or show a simple modal with the analysis
+            try {
+                const res = await fetch(`/api/influencers/${prospectId}`);
+                const data = await res.json();
+                if (data.success && data.prospect) {
+                    const p = data.prospect;
+                    const a = p.analysis_data || {};
+                    const reels = a.prospect_reels || [];
+                    const outliers = a.competitor_outliers || [];
+                    
+                    let html = `<h3 class='text-xl font-bold text-white mb-4'>Analysis: @${p.username}</h3>`;
+                    html += `<div class='grid grid-cols-3 gap-4 mb-6'>`;
+                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-violet-400'>${a.reel_count || 0}</div><div class='text-xs text-gray-400'>Reels Analyzed</div></div>`;
+                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-green-400'>${formatNumber(Math.round(a.avg_views || 0))}</div><div class='text-xs text-gray-400'>Avg Views</div></div>`;
+                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-pink-400'>${formatNumber(Math.round(a.avg_engagement || 0))}</div><div class='text-xs text-gray-400'>Avg Engagement</div></div>`;
+                    html += `</div>`;
+                    
+                    if (outliers.length > 0) {
+                        html += `<h4 class='text-lg font-semibold text-white mb-3'>🔥 Top Competitor Outlier Reels</h4>`;
+                        html += `<div class='space-y-3 max-h-[40vh] overflow-y-auto pr-2'>`;
+                        outliers.slice(0, 10).forEach(o => {
+                            html += `<div class='glass-card p-3 border border-gray-700/50'>
+                                <div class='flex justify-between items-start mb-1'>
+                                    <span class='text-sm font-medium text-violet-400'>@${o.competitor}</span>
+                                    <span class='text-xs bg-yellow-600/20 text-yellow-400 px-2 py-0.5 rounded'>Score: ${o.outlier_score}</span>
+                                </div>
+                                <p class='text-xs text-gray-300 line-clamp-2 mb-1'>${(o.caption || '').substring(0, 150)}</p>
+                                <div class='flex gap-3 text-xs text-gray-500'>
+                                    <span>👀 ${formatNumber(o.views)}</span>
+                                    <span>❤️ ${formatNumber(o.likes)}</span>
+                                    <span>💬 ${formatNumber(o.comments)}</span>
+                                    ${o.url ? `<a href='${o.url}' target='_blank' class='text-violet-400 hover:text-violet-300'>View →</a>` : ''}
+                                </div>
+                            </div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    // Show in a simple overlay
+                    const overlay = document.createElement('div');
+                    overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10';
+                    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+                    overlay.innerHTML = `<div class='glass-card glow-violet p-8 max-w-2xl w-full mx-4 relative'>
+                        <button onclick='this.closest(".fixed").remove()' class='absolute top-4 right-4 text-gray-400 hover:text-white'><i data-lucide='x' class='w-6 h-6'></i></button>
+                        ${html}
+                    </div>`;
+                    document.body.appendChild(overlay);
+                    lucide.createIcons();
+                }
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function deleteProspect(prospectId) {
+            if (!confirm('Delete this prospect?')) return;
+            try {
+                await fetch(`/api/influencers/${prospectId}`, { method: 'DELETE' });
+                loadProspects();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // ───────────────────────────
         // Init
         // ───────────────────────────
         function init() {
             loadAudits();
             renderAudits();
+            loadProspects();
 
             // Resume polling for any still-running audits
             audits.forEach(a => {

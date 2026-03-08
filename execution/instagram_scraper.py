@@ -440,6 +440,91 @@ def discover_competitors(niche_keyword, location="", min_followers=50000, max_fo
     return top
 
 
+def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
+    """
+    Discover influencers for outreach/partnership purposes.
+    Similar to discover_competitors but focuses on returning clean prospect metrics.
+    """
+    import re
+    
+    # Cast a wider net for discovery
+    queries = [
+        f"site:instagram.com {niche_keyword} {location}".strip(),
+        f"site:instagram.com \"{min_followers//1000}k..{max_followers//1000}k followers\" {niche_keyword} {location}".strip(),
+        f"site:instagram.com \"creator\" OR \"public figure\" {niche_keyword} {location}".strip()
+    ]
+    
+    usernames = []
+    
+    for query in queries:
+        logger.info(f"Influencer Discovery: Google search '{query}'")
+        google_results = _run_actor("apify/google-search-scraper", {
+            "queries": query,
+            "maxPagesPerQuery": 1,
+            "resultsPerPage": 20
+        }, timeout_secs=120)
+        
+        for page in google_results:
+            for result in page.get("organicResults", []):
+                url = result.get("url", "")
+                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url)
+                if match:
+                    username = match.group(1)
+                    skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                    if username.lower() not in skip:
+                        usernames.append(username)
+                        
+    # Deduplicate while preserving order
+    usernames = list(dict.fromkeys(usernames))
+    
+    if not usernames:
+        logger.error("No influencer usernames found from Google search!")
+        return []
+        
+    # Fetch in batch
+    fetch_limit = min(limit * 3, 40)
+    target_usernames = usernames[:fetch_limit]
+    
+    logger.info(f"Extracting profiles for {len(target_usernames)} potential influencers...")
+    
+    profiles = _run_actor("apify/instagram-profile-scraper", {
+        "usernames": target_usernames
+    }, timeout_secs=180)
+    
+    influencers = []
+    for item in profiles:
+        username = item.get("username")
+        if not username or item.get("error"):
+            continue
+        
+        followers = item.get("followersCount", 0) or 0
+        
+        # Strict follower filtering
+        if followers < min_followers or followers > max_followers:
+            continue
+            
+        influencers.append({
+            "username": username,
+            "full_name": item.get("fullName", ""),
+            "followers": followers,
+            "following": item.get("followsCount", 0) or 0,
+            "bio": item.get("biography", ""),
+            "profile_pic_url": item.get("profilePicUrl", ""),
+            "engagement_rate": _calc_engagement_rate(item),
+            "is_verified": item.get("verified", False),
+            "category": item.get("businessCategoryName", ""),
+            "external_url": item.get("externalUrl", "")
+        })
+    
+    # Sort by engagement rate to surface the best prospects
+    influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
+    
+    top = influencers[:limit]
+    logger.info(f"Found {len(top)} qualified influencers matching {min_followers}-{max_followers} followers.")
+    
+    return top
+
+
 def get_top_competitors_best_reels(niche_keyword, location="", limit=7, top_reels=15, recency_days=180):
     """
     Complete Competitor Outlier Engine:

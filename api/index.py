@@ -1958,6 +1958,292 @@ def social_audit_data(audit_id):
     return jsonify({'error': 'No data available yet'}), 404
 
 
+# ==========================================================================
+# INFLUENCER DISCOVERY
+# ==========================================================================
+
+@app.route('/api/influencers/discover', methods=['POST'])
+@login_required
+def discover_influencers():
+    """Discover Instagram influencers based on niche and follower limits."""
+    data = request.json or {}
+    niche = data.get('niche', '').strip()
+    location = data.get('location', '').strip()
+    
+    try:
+        min_followers = int(data.get('min_followers', 10000))
+        max_followers = int(data.get('max_followers', 100000))
+        limit = int(data.get('limit', 20))
+    except ValueError:
+        return jsonify({'error': 'Follower values and limit must be numbers'}), 400
+
+    if not niche:
+        return jsonify({'error': 'Niche keyword is required'}), 400
+
+    try:
+        from execution.instagram_scraper import find_influencers_by_niche
+        
+        influencers = find_influencers_by_niche(
+            niche_keyword=niche,
+            location=location,
+            min_followers=min_followers,
+            max_followers=max_followers,
+            limit=limit
+        )
+        
+        return jsonify({
+            'success': True,
+            'count': len(influencers),
+            'influencers': influencers
+        })
+        
+    except Exception as e:
+        logger.error(f"Error discovering influencers: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/influencers/save', methods=['POST'])
+@login_required
+def save_influencers():
+    """Save discovered influencers to the social_prospects table."""
+    data = request.json or {}
+    influencers = data.get('influencers', [])
+    niche = data.get('niche', '')
+    
+    if not influencers:
+        return jsonify({'error': 'No influencers to save'}), 400
+    
+    client = supabase_admin or supabase
+    saved = 0
+    skipped = 0
+    
+    for inf in influencers:
+        # Check for existing by username to avoid dupes
+        existing = client.table('social_prospects').select('id').eq('username', inf.get('username', '')).execute()
+        if existing.data:
+            skipped += 1
+            continue
+            
+        row = {
+            'username': inf.get('username', ''),
+            'full_name': inf.get('full_name', ''),
+            'followers': inf.get('followers', 0),
+            'following': inf.get('following', 0),
+            'bio': inf.get('bio', ''),
+            'profile_pic_url': inf.get('profile_pic_url', ''),
+            'engagement_rate': inf.get('engagement_rate', 0),
+            'is_verified': inf.get('is_verified', False),
+            'category': inf.get('category', ''),
+            'external_url': inf.get('external_url', ''),
+            'niche': niche,
+            'status': 'new'
+        }
+        
+        client.table('social_prospects').insert(row).execute()
+        saved += 1
+    
+    return jsonify({'success': True, 'saved': saved, 'skipped': skipped})
+
+
+@app.route('/api/influencers/list', methods=['GET'])
+@login_required
+def list_influencers():
+    """List all saved influencer prospects."""
+    client = supabase_admin or supabase
+    
+    try:
+        res = client.table('social_prospects').select('*').order('created_at', desc=True).execute()
+        return jsonify({'success': True, 'prospects': res.data or []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/influencers/<prospect_id>', methods=['GET'])
+@login_required
+def get_influencer(prospect_id):
+    """Get a single prospect with full data."""
+    client = supabase_admin or supabase
+    
+    try:
+        res = client.table('social_prospects').select('*').eq('id', prospect_id).single().execute()
+        return jsonify({'success': True, 'prospect': res.data})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
+
+
+@app.route('/api/influencers/<prospect_id>/competitors', methods=['POST'])
+@login_required
+def generate_prospect_competitors(prospect_id):
+    """Generate 4-5 competitors for a prospect."""
+    import threading
+    
+    data = request.json or {}
+    comp_niche = data.get('niche', '')
+    min_followers = int(data.get('min_followers', 50000))
+    max_followers = int(data.get('max_followers', 500000))
+    limit = min(int(data.get('limit', 5)), 5)  # Cap at 5
+    
+    client = supabase_admin or supabase
+    
+    # Fetch the prospect
+    prospect = client.table('social_prospects').select('*').eq('id', prospect_id).single().execute()
+    if not prospect.data:
+        return jsonify({'error': 'Prospect not found'}), 404
+    
+    p = prospect.data
+    niche_keyword = comp_niche or p.get('niche', '') or p.get('category', '')
+    
+    if not niche_keyword:
+        return jsonify({'error': 'No niche keyword provided or on prospect'}), 400
+    
+    # Update status
+    client.table('social_prospects').update({'status': 'finding_competitors'}).eq('id', prospect_id).execute()
+    
+    def _run_competitor_search():
+        try:
+            from execution.instagram_scraper import discover_competitors
+            
+            competitors = discover_competitors(
+                niche_keyword=niche_keyword,
+                min_followers=min_followers,
+                max_followers=max_followers,
+                limit=limit
+            )
+            
+            # Clean competitors (remove raw data to save space)
+            clean_comps = []
+            for c in competitors:
+                clean_comps.append({
+                    'username': c.get('username', ''),
+                    'full_name': c.get('full_name', ''),
+                    'followers': c.get('followers', 0),
+                    'profile_pic_url': c.get('profile_pic_url', ''),
+                    'engagement_rate': c.get('engagement_rate', 0),
+                    'is_verified': c.get('is_verified', False),
+                    'category': c.get('category', ''),
+                })
+            
+            client.table('social_prospects').update({
+                'competitors_data': clean_comps,
+                'status': 'competitors_found'
+            }).eq('id', prospect_id).execute()
+            
+            logger.info(f"Found {len(clean_comps)} competitors for @{p.get('username')}")
+            
+        except Exception as e:
+            logger.error(f"Competitor search failed for {prospect_id}: {e}")
+            client.table('social_prospects').update({'status': 'competitor_error'}).eq('id', prospect_id).execute()
+    
+    threading.Thread(target=_run_competitor_search, daemon=True).start()
+    return jsonify({'success': True, 'message': 'Competitor search started'})
+
+
+@app.route('/api/influencers/<prospect_id>/analyze', methods=['POST'])
+@login_required
+def analyze_prospect(prospect_id):
+    """Run full analysis: prospect reels (tone) + competitor outlier reels."""
+    import threading
+    
+    client = supabase_admin or supabase
+    
+    prospect = client.table('social_prospects').select('*').eq('id', prospect_id).single().execute()
+    if not prospect.data:
+        return jsonify({'error': 'Prospect not found'}), 404
+    
+    p = prospect.data
+    
+    client.table('social_prospects').update({'status': 'analyzing'}).eq('id', prospect_id).execute()
+    
+    def _run_analysis():
+        try:
+            from execution.instagram_scraper import scrape_instagram_profile, scrape_instagram_reels, _calc_engagement_rate
+            
+            # Step 1: Scrape prospect's reels for tone of voice
+            logger.info(f"Analyzing prospect @{p['username']}...")
+            profile = scrape_instagram_profile(p['username'])
+            
+            prospect_reels = []
+            if profile:
+                reels = scrape_instagram_reels(p['username'], max_reels=15, profile_data=profile)
+                prospect_reels = [{
+                    'caption': r.get('caption', ''),
+                    'views': r.get('views', 0),
+                    'likes': r.get('likes', 0),
+                    'comments': r.get('comments', 0),
+                    'url': r.get('url', ''),
+                    'timestamp': r.get('timestamp', '')
+                } for r in reels]
+            
+            analysis = {
+                'prospect_reels': prospect_reels,
+                'reel_count': len(prospect_reels),
+                'avg_views': sum(r['views'] for r in prospect_reels) / max(len(prospect_reels), 1),
+                'avg_engagement': sum(r['likes'] + r['comments'] for r in prospect_reels) / max(len(prospect_reels), 1),
+            }
+            
+            # Step 2: Competitor outlier reels
+            competitors = p.get('competitors_data') or []
+            comp_outliers = []
+            
+            for comp in competitors:
+                try:
+                    comp_profile = scrape_instagram_profile(comp['username'])
+                    if comp_profile:
+                        comp_reels = scrape_instagram_reels(comp['username'], max_reels=20, profile_data=comp_profile)
+                        
+                        avg_eng = sum(r.get('likes', 0) + r.get('comments', 0) for r in comp_reels) / max(len(comp_reels), 1)
+                        
+                        for reel in comp_reels:
+                            reel_eng = reel.get('likes', 0) + reel.get('comments', 0)
+                            outlier_score = (reel_eng / max(avg_eng, 1)) * ((reel_eng / max(comp.get('followers', 1), 1)) * 100)
+                            
+                            comp_outliers.append({
+                                'competitor': comp['username'],
+                                'caption': reel.get('caption', ''),
+                                'views': reel.get('views', 0),
+                                'likes': reel.get('likes', 0),
+                                'comments': reel.get('comments', 0),
+                                'url': reel.get('url', ''),
+                                'outlier_score': round(outlier_score, 2)
+                            })
+                except Exception as ce:
+                    logger.warning(f"Failed to analyze competitor @{comp.get('username')}: {ce}")
+            
+            # Sort outliers
+            comp_outliers.sort(key=lambda x: x.get('outlier_score', 0), reverse=True)
+            analysis['competitor_outliers'] = comp_outliers[:20]
+            
+            client.table('social_prospects').update({
+                'analysis_data': analysis,
+                'status': 'analyzed'
+            }).eq('id', prospect_id).execute()
+            
+            logger.info(f"Analysis complete for @{p['username']}: {len(prospect_reels)} reels, {len(comp_outliers)} competitor outliers")
+            
+        except Exception as e:
+            logger.error(f"Analysis failed for {prospect_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            client.table('social_prospects').update({'status': 'analysis_error'}).eq('id', prospect_id).execute()
+    
+    threading.Thread(target=_run_analysis, daemon=True).start()
+    return jsonify({'success': True, 'message': 'Analysis started'})
+
+
+@app.route('/api/influencers/<prospect_id>', methods=['DELETE'])
+@login_required
+def delete_influencer(prospect_id):
+    """Delete a prospect."""
+    client = supabase_admin or supabase
+    try:
+        client.table('social_prospects').delete().eq('id', prospect_id).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("Starting server...")
     port = int(os.environ.get('PORT', 5002)) # Default to 5002 as requested
