@@ -1868,6 +1868,104 @@ def _run_social_audit_pipeline(job_id, username, niche="", location="", recency_
         job["error"] = str(e)
 
 
+def _run_social_audit_pipeline_from_prospect(prospect_id):
+    """Background pipeline: use pre-found competitors → transcribe → extract hooks → store."""
+    client = supabase_admin or supabase
+    try:
+        logger.info(f"Starting audit pipeline from prospect {prospect_id}")
+        # Fetch prospect
+        res = client.table('social_prospects').select('*').eq('id', prospect_id).single().execute()
+        if not res.data:
+            logger.error(f"Prospect {prospect_id} not found")
+            return
+        p = res.data
+        username = p['username'].replace('@', '')
+        competitors = p.get('competitors_data') or []
+        
+        # We process this audit under the prospect_id as the job_id
+        job_id = prospect_id 
+        
+        # Step 1: Baseline Profile
+        client.table('social_prospects').update({'status': 'analyzing'}).eq('id', prospect_id).execute()
+        
+        # Import dynamically if not at top-level
+        from execution.instagram_scraper import scrape_instagram_profile, screenshot_instagram_profile
+        
+        logger.info(f"Scraping profile for @{username}")
+        profile = scrape_instagram_profile(username)
+        if not profile:
+            client.table('social_prospects').update({'status': 'analysis_error'}).eq('id', prospect_id).execute()
+            return
+            
+        ig_screenshot_url = None
+        try:
+            ig_screenshot_url = screenshot_instagram_profile(username)
+            if ig_screenshot_url:
+                logger.info(f"Instagram profile screenshot captured for @{username}")
+        except Exception as e:
+            logger.error(f"Profile screenshot step failed: {e}")
+
+        # Step 2: Extract reels from PRE-FOUND competitors
+        logger.info(f"Extracting best reels from {len(competitors)} pre-found competitors...")
+        from execution.instagram_scraper import get_best_reels_from_competitor_list
+        reels = get_best_reels_from_competitor_list(competitors, limit=6, top_reels=15, recency_days=180)
+        
+        # Step 3: Transcribe
+        if reels:
+            logger.info("Transcribing reels...")
+            reels = batch_transcribe_reels(reels, language="en")
+            
+        # Step 4: Extract hooks & Strategy
+        ai_strategy = []
+        if reels:
+            logger.info("Extracting hooks...")
+            reels = extract_hooks_batch(reels)
+            from execution.hook_extractor import generate_actionable_strategy
+            try:
+                logger.info("Generating actionable strategy...")
+                ai_strategy = generate_actionable_strategy(profile, reels)
+            except Exception as e:
+                logger.error(f"Strategy generation failed: {e}")
+                
+        # Step 5: Save to audits table so it appears in standard audit dashboard
+        logger.info("Saving audit to database...")
+        clean_reels = [{k: v for k, v in r.items() if k != 'raw'} for r in reels]
+        clean_profile = {k: v for k, v in profile.items() if k != 'raw'}
+        
+        audit_data = {
+            "id": job_id, 
+            "type": "social_media",
+            "status": "completed",
+            "results": {
+                "profile": clean_profile,
+                "reels": clean_reels,
+                "ai_strategy": ai_strategy,
+                "ig_profile_screenshot": ig_screenshot_url,
+                "stats": {
+                    "total_reels": len(reels),
+                    "transcribed": sum(1 for r in reels if r.get("transcript")),
+                    "hooks_extracted": sum(1 for r in reels if r.get("hook_text"))
+                }
+            }
+        }
+        client.table('audits').upsert(audit_data).execute()
+        
+        # Update the prospect so the UI knows it's done
+        # We can link the analysis_data to {"audit_id": job_id}
+        client.table('social_prospects').update({
+            'status': 'analyzed',
+            'analysis_data': {"audit_id": job_id} 
+        }).eq('id', prospect_id).execute()
+        
+        logger.info(f"Analysis complete for @{username} based on predefined competitors!")
+
+    except Exception as e:
+        logger.error(f"Analysis pipeline failed for prospect {prospect_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        client.table('social_prospects').update({'status': 'analysis_error'}).eq('id', prospect_id).execute()
+
+
 @app.route('/api/social-audit/start', methods=['POST'])
 def start_social_audit():
     """Start a social media audit for an Instagram username."""
@@ -2179,93 +2277,13 @@ def generate_prospect_competitors(prospect_id):
 @app.route('/api/influencers/<prospect_id>/analyze', methods=['POST'])
 @login_required
 def analyze_prospect(prospect_id):
-    """Run full analysis: prospect reels (tone) + competitor outlier reels."""
+    """Run full social media audit using pre-found competitors."""
     import threading
     
-    client = supabase_admin or supabase
+    # We just kick off the new pipeline thread
+    threading.Thread(target=_run_social_audit_pipeline_from_prospect, args=(prospect_id,), daemon=True).start()
     
-    prospect = client.table('social_prospects').select('*').eq('id', prospect_id).single().execute()
-    if not prospect.data:
-        return jsonify({'error': 'Prospect not found'}), 404
-    
-    p = prospect.data
-    
-    client.table('social_prospects').update({'status': 'analyzing'}).eq('id', prospect_id).execute()
-    
-    def _run_analysis():
-        try:
-            from execution.instagram_scraper import scrape_instagram_profile, scrape_instagram_reels, _calc_engagement_rate
-            
-            # Step 1: Scrape prospect's reels for tone of voice
-            logger.info(f"Analyzing prospect @{p['username']}...")
-            profile = scrape_instagram_profile(p['username'])
-            
-            prospect_reels = []
-            if profile:
-                reels = scrape_instagram_reels(p['username'], max_reels=15, profile_data=profile)
-                prospect_reels = [{
-                    'caption': r.get('caption', ''),
-                    'views': r.get('views', 0),
-                    'likes': r.get('likes', 0),
-                    'comments': r.get('comments', 0),
-                    'url': r.get('url', ''),
-                    'timestamp': r.get('timestamp', '')
-                } for r in reels]
-            
-            analysis = {
-                'prospect_reels': prospect_reels,
-                'reel_count': len(prospect_reels),
-                'avg_views': sum(r['views'] for r in prospect_reels) / max(len(prospect_reels), 1),
-                'avg_engagement': sum(r['likes'] + r['comments'] for r in prospect_reels) / max(len(prospect_reels), 1),
-            }
-            
-            # Step 2: Competitor outlier reels
-            competitors = p.get('competitors_data') or []
-            comp_outliers = []
-            
-            for comp in competitors:
-                try:
-                    comp_profile = scrape_instagram_profile(comp['username'])
-                    if comp_profile:
-                        comp_reels = scrape_instagram_reels(comp['username'], max_reels=20, profile_data=comp_profile)
-                        
-                        avg_eng = sum(r.get('likes', 0) + r.get('comments', 0) for r in comp_reels) / max(len(comp_reels), 1)
-                        
-                        for reel in comp_reels:
-                            reel_eng = reel.get('likes', 0) + reel.get('comments', 0)
-                            outlier_score = (reel_eng / max(avg_eng, 1)) * ((reel_eng / max(comp.get('followers', 1), 1)) * 100)
-                            
-                            comp_outliers.append({
-                                'competitor': comp['username'],
-                                'caption': reel.get('caption', ''),
-                                'views': reel.get('views', 0),
-                                'likes': reel.get('likes', 0),
-                                'comments': reel.get('comments', 0),
-                                'url': reel.get('url', ''),
-                                'outlier_score': round(outlier_score, 2)
-                            })
-                except Exception as ce:
-                    logger.warning(f"Failed to analyze competitor @{comp.get('username')}: {ce}")
-            
-            # Sort outliers
-            comp_outliers.sort(key=lambda x: x.get('outlier_score', 0), reverse=True)
-            analysis['competitor_outliers'] = comp_outliers[:20]
-            
-            client.table('social_prospects').update({
-                'analysis_data': analysis,
-                'status': 'analyzed'
-            }).eq('id', prospect_id).execute()
-            
-            logger.info(f"Analysis complete for @{p['username']}: {len(prospect_reels)} reels, {len(comp_outliers)} competitor outliers")
-            
-        except Exception as e:
-            logger.error(f"Analysis failed for {prospect_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            client.table('social_prospects').update({'status': 'analysis_error'}).eq('id', prospect_id).execute()
-    
-    threading.Thread(target=_run_analysis, daemon=True).start()
-    return jsonify({'success': True, 'message': 'Analysis started'})
+    return jsonify({'success': True, 'message': 'Analysis started using pre-found competitors'})
 
 
 @app.route('/api/influencers/<prospect_id>', methods=['DELETE'])

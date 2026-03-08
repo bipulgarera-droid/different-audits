@@ -884,57 +884,8 @@
         }
 
         async function viewAnalysis(prospectId) {
-            // For now, open the social audit results page with this prospect's data
-            // or show a simple modal with the analysis
-            try {
-                const res = await fetch(`/api/influencers/${prospectId}`);
-                const data = await res.json();
-                if (data.success && data.prospect) {
-                    const p = data.prospect;
-                    const a = p.analysis_data || {};
-                    const reels = a.prospect_reels || [];
-                    const outliers = a.competitor_outliers || [];
-
-                    let html = `<h3 class='text-xl font-bold text-white mb-4'>Analysis: @${p.username}</h3>`;
-                    html += `<div class='grid grid-cols-3 gap-4 mb-6'>`;
-                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-violet-400'>${a.reel_count || 0}</div><div class='text-xs text-gray-400'>Reels Analyzed</div></div>`;
-                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-green-400'>${formatNumber(Math.round(a.avg_views || 0))}</div><div class='text-xs text-gray-400'>Avg Views</div></div>`;
-                    html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-pink-400'>${formatNumber(Math.round(a.avg_engagement || 0))}</div><div class='text-xs text-gray-400'>Avg Engagement</div></div>`;
-                    html += `</div>`;
-
-                    if (outliers.length > 0) {
-                        html += `<h4 class='text-lg font-semibold text-white mb-3'>🔥 Top Competitor Outlier Reels</h4>`;
-                        html += `<div class='space-y-3 max-h-[40vh] overflow-y-auto pr-2'>`;
-                        outliers.slice(0, 10).forEach(o => {
-                            html += `<div class='glass-card p-3 border border-gray-700/50'>
-                                <div class='flex justify-between items-start mb-1'>
-                                    <span class='text-sm font-medium text-violet-400'>@${o.competitor}</span>
-                                    <span class='text-xs bg-yellow-600/20 text-yellow-400 px-2 py-0.5 rounded'>Score: ${o.outlier_score}</span>
-                                </div>
-                                <p class='text-xs text-gray-300 line-clamp-2 mb-1'>${(o.caption || '').substring(0, 150)}</p>
-                                <div class='flex gap-3 text-xs text-gray-500'>
-                                    <span>👀 ${formatNumber(o.views)}</span>
-                                    <span>❤️ ${formatNumber(o.likes)}</span>
-                                    <span>💬 ${formatNumber(o.comments)}</span>
-                                    ${o.url ? `<a href='${o.url}' target='_blank' class='text-violet-400 hover:text-violet-300'>View →</a>` : ''}
-                                </div>
-                            </div>`;
-                        });
-                        html += `</div>`;
-                    }
-
-                    // Show in a simple overlay
-                    const overlay = document.createElement('div');
-                    overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10';
-                    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-                    overlay.innerHTML = `<div class='glass-card glow-violet p-8 max-w-2xl w-full mx-4 relative'>
-                        <button onclick='this.closest(".fixed").remove()' class='absolute top-4 right-4 text-gray-400 hover:text-white'><i data-lucide='x' class='w-6 h-6'></i></button>
-                        ${html}
-                    </div>`;
-                    document.body.appendChild(overlay);
-                    lucide.createIcons();
-                }
-            } catch (err) { alert('Error: ' + err.message); }
+            // Re-direct to the standard social media dashboard table for this specific audit ID
+            window.location.href = `/social-media-dashboard.html?id=${prospectId}`;
         }
 
         async function deleteProspect(prospectId) {

@@ -608,6 +608,76 @@ def _find_influencers_google_fallback(niche_keyword, location="", min_followers=
     return influencers[:limit]
 
 
+def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, recency_days=180):
+    """
+    Computes outlier reels using an already-discovered list of competitors.
+    Skips the heavy Google Search / discovery phase.
+    """
+    logger.info(f"=== REEL OUTLIER ENGINE: Processing {len(competitors)} pre-found competitors ===")
+    
+    all_reels = []
+    competitors_data = []
+    
+    # Process up to 'limit' competitors
+    for comp in competitors[:limit]:
+        uname = comp["username"]
+        followers = comp.get("followers", 0)
+        raw_profile = comp.get("raw", {})
+        
+        # Scrape their recent reels
+        logger.info(f"Fetching recent reels for @{uname}...")
+        reels = scrape_instagram_reels(uname, max_reels=30, profile_data={"raw": raw_profile}, recency_days=recency_days)
+        
+        if not reels:
+            logger.warning(f"@{uname}: no reels found")
+            continue
+            
+        # Compute average engagement for this competitor's reels
+        avg_eng = sum(r.get("likes", 0) + r.get("comments", 0) for r in reels) / max(len(reels), 1)
+        
+        comp_info = {
+            "username": uname,
+            "full_name": comp.get("full_name", ""),
+            "followers": followers,
+            "profile_pic_url": comp.get("profile_pic_url", ""),
+            "engagement_rate": comp.get("engagement_rate", 0),
+            "avg_engagement": avg_eng,
+            "reels_count": len(reels)
+        }
+        competitors_data.append(comp_info)
+        
+        # Score every reel
+        for reel in reels:
+            reel_eng = reel.get("likes", 0) + reel.get("comments", 0)
+            
+            # Outlier vs self
+            outlier_vs_self = reel_eng / max(avg_eng, 1)
+            
+            # Engagement / follower ratio
+            eng_follower_ratio = (reel_eng / max(followers, 1)) * 100
+            
+            outlier_score = outlier_vs_self * eng_follower_ratio
+            
+            reel["outlier_score"] = round(outlier_score, 2)
+            reel["outlier_vs_self"] = round(outlier_vs_self, 2)
+            reel["eng_follower_ratio"] = round(eng_follower_ratio, 2)
+            reel["competitor"] = comp_info
+            
+            all_reels.append(reel)
+            
+    logger.info(f"Total reels collected: {len(all_reels)} from {len(competitors_data)} competitors")
+    
+    # Sort by outlier score descending
+    all_reels.sort(key=lambda x: x.get("outlier_score", 0), reverse=True)
+    
+    top = all_reels[:top_reels]
+    if top:
+        logger.info(f"Top outlier: @{top[0].get('competitor', {}).get('username', '?')} — "
+                     f"score={top[0]['outlier_score']}, views={top[0].get('views', 0)}")
+                     
+    return top
+
+
 def get_top_competitors_best_reels(niche_keyword, location="", limit=7, top_reels=15, recency_days=180):
     """
     Complete Competitor Outlier Engine:
