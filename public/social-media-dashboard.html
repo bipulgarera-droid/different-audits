@@ -242,18 +242,21 @@
                 <i data-lucide="user-circle" class="w-5 h-5 text-violet-400"></i> Client Profile Baseline
             </h3>
 
-            <div class="glass-card glow-violet p-6">
-                <div class="flex items-center gap-6 mb-6">
+            <div class="glass-card glow-violet p-4 sm:p-6">
+                <div
+                    class="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-6 text-center sm:text-left">
                     <img id="profile-pic" src="" alt="Profile"
-                        class="w-20 h-20 rounded-full ring-2 ring-violet-500/50 object-cover" />
-                    <div>
-                        <h2 id="profile-name" class="text-xl font-bold text-white"></h2>
-                        <p id="profile-username" class="text-gray-400 text-sm pb-1">@username</p>
-                        <p id="profile-bio" class="text-gray-500 text-xs mt-1 max-w-md line-clamp-4 pb-2"></p>
+                        class="w-20 h-20 rounded-full ring-2 ring-violet-500/50 object-cover flex-shrink-0" />
+                    <div class="min-w-0">
+                        <h2 id="profile-name" class="text-xl sm:text-2xl font-bold text-white truncate px-2 sm:px-0">
+                        </h2>
+                        <p id="profile-username" class="text-gray-400 text-sm pb-1 truncate px-2 sm:px-0">@username</p>
+                        <p id="profile-bio" class="text-gray-500 text-xs mt-1 max-w-md line-clamp-4 pb-2 px-2 sm:px-0">
+                        </p>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-5 gap-4">
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
                     <div class="stat-card p-4 text-center">
                         <div class="text-[10px] text-gray-400 uppercase tracking-wider mb-1">Followers</div>
                         <div id="stat-followers" class="text-2xl font-bold text-white">-</div>
@@ -331,8 +334,8 @@
                 </span>
             </div>
 
-            <div class="glass-card glow-orange overflow-hidden">
-                <table class="w-full text-sm">
+            <div class="glass-card glow-orange overflow-x-auto hover:overflow-x-auto w-full">
+                <table class="w-full text-sm min-w-[700px]">
                     <thead>
                         <tr class="border-b border-gray-800 bg-black/30">
                             <th
@@ -394,9 +397,9 @@
                 </div>
 
                 <!-- Right: Key Metrics Table -->
-                <div class="glass-card p-6">
+                <div class="glass-card p-4 sm:p-6 overflow-x-auto w-full">
                     <p class="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Performance Summary</p>
-                    <table class="w-full text-sm">
+                    <table class="w-full text-sm min-w-[450px]">
                         <thead>
                             <tr class="border-b border-gray-800">
                                 <th class="text-left py-3 text-gray-400 font-medium text-xs uppercase">Metric</th>
