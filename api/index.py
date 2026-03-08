@@ -1868,7 +1868,7 @@ def _run_social_audit_pipeline(job_id, username, niche="", location="", recency_
         job["error"] = str(e)
 
 
-def _run_social_audit_pipeline_from_prospect(prospect_id):
+def _run_social_audit_pipeline_from_prospect(prospect_id, recency_days=180):
     """Background pipeline: use pre-found competitors → transcribe → extract hooks → store."""
     client = supabase_admin or supabase
     try:
@@ -1906,9 +1906,9 @@ def _run_social_audit_pipeline_from_prospect(prospect_id):
             logger.error(f"Profile screenshot step failed: {e}")
 
         # Step 2: Extract reels from PRE-FOUND competitors
-        logger.info(f"Extracting best reels from {len(competitors)} pre-found competitors...")
+        logger.info(f"Extracting best reels from {len(competitors)} pre-found competitors... (recency: {recency_days} days)")
         from execution.instagram_scraper import get_best_reels_from_competitor_list
-        reels = get_best_reels_from_competitor_list(competitors, limit=6, top_reels=15, recency_days=180)
+        reels = get_best_reels_from_competitor_list(competitors, limit=6, top_reels=15, recency_days=recency_days)
         
         # Step 3: Transcribe
         if reels:
@@ -2280,8 +2280,11 @@ def analyze_prospect(prospect_id):
     """Run full social media audit using pre-found competitors."""
     import threading
     
+    data = request.json or {}
+    recency_days = int(data.get('recency_days', 180))
+    
     # We just kick off the new pipeline thread
-    threading.Thread(target=_run_social_audit_pipeline_from_prospect, args=(prospect_id,), daemon=True).start()
+    threading.Thread(target=_run_social_audit_pipeline_from_prospect, args=(prospect_id, recency_days), daemon=True).start()
     
     return jsonify({'success': True, 'message': 'Analysis started using pre-found competitors'})
 
