@@ -626,7 +626,15 @@ def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, rece
         
         # Scrape their recent reels
         logger.info(f"Fetching recent reels for @{uname}...")
-        reels = scrape_instagram_reels(uname, max_reels=30, profile_data={"raw": raw_profile}, recency_days=recency_days)
+        
+        # If the pre-found competitor was loaded from the DB, its "raw" data might have been 
+        # cleaned out to save space. In that case, we need to perform a fresh scrape.
+        if raw_profile and ("latestPosts" in raw_profile or "recentPosts" in raw_profile):
+            reels = scrape_instagram_reels(uname, max_reels=30, profile_data={"raw": raw_profile}, recency_days=recency_days)
+        else:
+            logger.info(f"@{uname}: No pre-fetched posts in memory, scraping profile from Instagram...")
+            reels = scrape_instagram_reels(uname, max_reels=30, recency_days=recency_days)
+        
         
         if not reels:
             logger.warning(f"@{uname}: no reels found")
