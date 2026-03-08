@@ -318,13 +318,14 @@
 
             const btn = document.getElementById('btn-discover');
             btn.disabled = true;
-            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Searching over 20+ profiles... (takes ~2 mins)';
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Starting search...';
 
             document.getElementById('disc-results').classList.add('hidden');
             document.getElementById('disc-list').innerHTML = '';
 
             try {
-                const res = await fetch('/api/influencers/discover', {
+                // Step 1: Start async discovery
+                const startRes = await fetch('/api/influencers/discover', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -335,41 +336,74 @@
                     })
                 });
 
-                const data = await res.json();
-
-                if (data.success) {
-                    discoveredInfluencers = data.influencers || [];
-                    document.getElementById('disc-count').innerText = discoveredInfluencers.length;
-
-                    if (discoveredInfluencers.length > 0) {
-                        document.getElementById('disc-list').innerHTML = discoveredInfluencers.map(inf => `
-                            <div class="glass-card p-4 flex gap-4 items-start border border-gray-700/50 hover:border-violet-500/50 transition-colors">
-                                <img src="${inf.profile_pic_url || 'https://via.placeholder.com/150'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/150'"/>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex justify-between items-start">
-                                        <h4 class="font-bold text-white truncate"><a href="https://instagram.com/${inf.username}" target="_blank" class="hover:text-violet-400">@${inf.username}</a></h4>
-                                        ${inf.is_verified ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-blue-400 shrink-0"></i>' : ''}
-                                    </div>
-                                    <p class="text-xs text-gray-400 mb-1 truncate">${inf.full_name || ''}</p>
-                                    <div class="flex flex-wrap gap-2 text-xs mb-2">
-                                        <span class="bg-violet-600/20 text-violet-400 px-2 py-0.5 rounded font-medium">${formatNumber(inf.followers)} followers</span>
-                                        <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded">Eng: ${inf.engagement_rate}%</span>
-                                    </div>
-                                    <p class="text-xs text-gray-500 line-clamp-2">${inf.bio || ''}</p>
-                                </div>
-                            </div>
-                        `).join('');
-                    } else {
-                        document.getElementById('disc-list').innerHTML = '<p class="text-gray-400 col-span-2 text-center py-4">No influencers found matching that criteria.</p>';
-                    }
-
-                    document.getElementById('disc-results').classList.remove('hidden');
-                    lucide.createIcons();
-                } else {
-                    alert('Error: ' + data.error);
+                const startData = await startRes.json();
+                if (!startData.success || !startData.job_id) {
+                    alert('Error: ' + (startData.error || 'Failed to start discovery'));
+                    return;
                 }
+
+                // Step 2: Poll for results
+                btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> Searching Instagram... (takes ~1-2 mins)';
+
+                const jobId = startData.job_id;
+                const pollResult = await new Promise((resolve, reject) => {
+                    let elapsed = 0;
+                    const interval = setInterval(async () => {
+                        elapsed += 3000;
+                        if (elapsed > 300000) { // 5 min timeout
+                            clearInterval(interval);
+                            reject(new Error('Discovery timed out'));
+                            return;
+                        }
+                        try {
+                            const pollRes = await fetch(`/api/influencers/discover/${jobId}/status`);
+                            const pollData = await pollRes.json();
+
+                            if (pollData.status === 'done') {
+                                clearInterval(interval);
+                                resolve(pollData);
+                            } else if (pollData.status === 'error') {
+                                clearInterval(interval);
+                                reject(new Error(pollData.error || 'Discovery failed'));
+                            }
+                            // else still searching, keep polling
+                        } catch (e) {
+                            // Network error, keep trying
+                            console.warn('Poll error:', e);
+                        }
+                    }, 3000);
+                });
+
+                // Step 3: Display results
+                discoveredInfluencers = pollResult.influencers || [];
+                document.getElementById('disc-count').innerText = discoveredInfluencers.length;
+
+                if (discoveredInfluencers.length > 0) {
+                    document.getElementById('disc-list').innerHTML = discoveredInfluencers.map(inf => `
+                        <div class="glass-card p-4 flex gap-4 items-start border border-gray-700/50 hover:border-violet-500/50 transition-colors">
+                            <img src="${inf.profile_pic_url || 'https://via.placeholder.com/150'}" class="w-14 h-14 rounded-full object-cover shrink-0" onerror="this.src='https://via.placeholder.com/150'"/>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-bold text-white truncate"><a href="https://instagram.com/${inf.username}" target="_blank" class="hover:text-violet-400">@${inf.username}</a></h4>
+                                    ${inf.is_verified ? '<i data-lucide="check-circle-2" class="w-4 h-4 text-blue-400 shrink-0"></i>' : ''}
+                                </div>
+                                <p class="text-xs text-gray-400 mb-1 truncate">${inf.full_name || ''}</p>
+                                <div class="flex flex-wrap gap-2 text-xs mb-2">
+                                    <span class="bg-violet-600/20 text-violet-400 px-2 py-0.5 rounded font-medium">${formatNumber(inf.followers)} followers</span>
+                                    <span class="bg-gray-800 text-gray-300 px-2 py-0.5 rounded">Eng: ${inf.engagement_rate}%</span>
+                                </div>
+                                <p class="text-xs text-gray-500 line-clamp-2">${inf.bio || ''}</p>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('disc-list').innerHTML = '<p class="text-gray-400 col-span-2 text-center py-4">No influencers found matching that criteria.</p>';
+                }
+
+                document.getElementById('disc-results').classList.remove('hidden');
+                lucide.createIcons();
             } catch (err) {
-                alert('Request failed: ' + err.message);
+                alert('Discovery failed: ' + err.message);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Search Influencers';
@@ -830,14 +864,14 @@
                     const a = p.analysis_data || {};
                     const reels = a.prospect_reels || [];
                     const outliers = a.competitor_outliers || [];
-                    
+
                     let html = `<h3 class='text-xl font-bold text-white mb-4'>Analysis: @${p.username}</h3>`;
                     html += `<div class='grid grid-cols-3 gap-4 mb-6'>`;
                     html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-violet-400'>${a.reel_count || 0}</div><div class='text-xs text-gray-400'>Reels Analyzed</div></div>`;
                     html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-green-400'>${formatNumber(Math.round(a.avg_views || 0))}</div><div class='text-xs text-gray-400'>Avg Views</div></div>`;
                     html += `<div class='glass-card p-4 text-center'><div class='text-2xl font-bold text-pink-400'>${formatNumber(Math.round(a.avg_engagement || 0))}</div><div class='text-xs text-gray-400'>Avg Engagement</div></div>`;
                     html += `</div>`;
-                    
+
                     if (outliers.length > 0) {
                         html += `<h4 class='text-lg font-semibold text-white mb-3'>🔥 Top Competitor Outlier Reels</h4>`;
                         html += `<div class='space-y-3 max-h-[40vh] overflow-y-auto pr-2'>`;
@@ -858,7 +892,7 @@
                         });
                         html += `</div>`;
                     }
-                    
+
                     // Show in a simple overlay
                     const overlay = document.createElement('div');
                     overlay.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10';

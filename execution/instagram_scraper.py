@@ -442,52 +442,68 @@ def discover_competitors(niche_keyword, location="", min_followers=50000, max_fo
 
 def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
     """
-    Discover influencers for outreach/partnership purposes.
-    Similar to discover_competitors but focuses on returning clean prospect metrics.
+    Discover influencers using Instagram Search API (not Google dorks).
+    
+    Step 1: Search Instagram directly for users matching the niche keyword.
+            The search actor returns username + follower count, so we can filter
+            BEFORE scraping full profiles (saves Apify credits).
+    Step 2: Filter by follower range.
+    Step 3: Scrape full profiles only for the filtered matches.
     """
-    import re
+    search_query = f"{niche_keyword} {location}".strip()
     
-    # Cast a wider net for discovery
-    queries = [
-        f"site:instagram.com {niche_keyword} {location}".strip(),
-        f"site:instagram.com \"{min_followers//1000}k..{max_followers//1000}k followers\" {niche_keyword} {location}".strip(),
-        f"site:instagram.com \"creator\" OR \"public figure\" {niche_keyword} {location}".strip()
-    ]
+    logger.info(f"Influencer Discovery: Instagram search '{search_query}' ({min_followers}-{max_followers} followers)")
     
-    usernames = []
+    # Step 1: Search Instagram directly for users
+    search_results = _run_actor_async("apify/instagram-search", {
+        "queries": [search_query],
+        "searchType": "users",
+        "resultsLimit": min(limit * 4, 80)  # Fetch extra to account for filtering
+    }, timeout_secs=120)
     
-    for query in queries:
-        logger.info(f"Influencer Discovery: Google search '{query}'")
-        google_results = _run_actor("apify/google-search-scraper", {
-            "queries": query,
-            "maxPagesPerQuery": 1,
-            "resultsPerPage": 20
-        }, timeout_secs=120)
+    if not search_results:
+        logger.warning("Instagram search returned no results, falling back to Google search")
+        return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
+    
+    # Step 2: Filter by follower range using the search results
+    candidates = []
+    for item in search_results:
+        username = item.get("username") or item.get("name", "")
+        followers = item.get("followersCount", 0) or item.get("followers", 0) or 0
         
-        for page in google_results:
-            for result in page.get("organicResults", []):
-                url = result.get("url", "")
-                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url)
-                if match:
-                    username = match.group(1)
-                    skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
-                    if username.lower() not in skip:
-                        usernames.append(username)
-                        
-    # Deduplicate while preserving order
-    usernames = list(dict.fromkeys(usernames))
-    
-    if not usernames:
-        logger.error("No influencer usernames found from Google search!")
-        return []
+        if not username:
+            continue
+            
+        # Skip system pages
+        skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+        if username.lower() in skip:
+            continue
         
-    # Fetch in batch
-    fetch_limit = min(limit * 3, 40)
-    target_usernames = usernames[:fetch_limit]
+        # Filter by follower range BEFORE scraping full profiles
+        if followers < min_followers or followers > max_followers:
+            logger.info(f"Skipping @{username} — {followers:,} followers (outside {min_followers:,}-{max_followers:,})")
+            continue
+        
+        candidates.append({
+            "username": username,
+            "search_followers": followers,
+            "full_name": item.get("fullName", "") or item.get("full_name", ""),
+            "profile_pic_url": item.get("profilePicUrl", "") or item.get("profile_pic_url", ""),
+            "bio": item.get("biography", "") or item.get("bio", ""),
+            "is_verified": item.get("verified", False) or item.get("is_verified", False),
+        })
     
-    logger.info(f"Extracting profiles for {len(target_usernames)} potential influencers...")
+    logger.info(f"Instagram search: {len(search_results)} results → {len(candidates)} match follower range")
     
-    profiles = _run_actor("apify/instagram-profile-scraper", {
+    if not candidates:
+        logger.warning("No candidates matched follower range, falling back to Google search")
+        return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
+    
+    # Step 3: Scrape full profiles for the filtered candidates (more accurate data)
+    target_usernames = [c["username"] for c in candidates[:min(limit * 2, 30)]]
+    
+    logger.info(f"Scraping full profiles for {len(target_usernames)} candidates...")
+    profiles = _run_actor_async("apify/instagram-profile-scraper", {
         "usernames": target_usernames
     }, timeout_secs=180)
     
@@ -499,7 +515,7 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
         
         followers = item.get("followersCount", 0) or 0
         
-        # Strict follower filtering
+        # Double-check follower range with actual profile data
         if followers < min_followers or followers > max_followers:
             continue
             
@@ -523,6 +539,64 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     logger.info(f"Found {len(top)} qualified influencers matching {min_followers}-{max_followers} followers.")
     
     return top
+
+
+def _find_influencers_google_fallback(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
+    """Fallback: use Google search if Instagram search returns nothing."""
+    import re
+    
+    query = f"site:instagram.com {niche_keyword} {location}".strip()
+    logger.info(f"Fallback: Google search '{query}'")
+    
+    google_results = _run_actor_async("apify/google-search-scraper", {
+        "queries": query,
+        "maxPagesPerQuery": 2,
+        "resultsPerPage": 30
+    }, timeout_secs=120)
+    
+    usernames = []
+    for page in google_results:
+        for result in page.get("organicResults", []):
+            url = result.get("url", "")
+            match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url)
+            if match:
+                username = match.group(1)
+                skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                if username.lower() not in skip:
+                    usernames.append(username)
+    
+    usernames = list(dict.fromkeys(usernames))
+    if not usernames:
+        return []
+    
+    target = usernames[:min(limit * 2, 30)]
+    profiles = _run_actor_async("apify/instagram-profile-scraper", {
+        "usernames": target
+    }, timeout_secs=180)
+    
+    influencers = []
+    for item in profiles:
+        username = item.get("username")
+        if not username or item.get("error"):
+            continue
+        followers = item.get("followersCount", 0) or 0
+        if followers < min_followers or followers > max_followers:
+            continue
+        influencers.append({
+            "username": username,
+            "full_name": item.get("fullName", ""),
+            "followers": followers,
+            "following": item.get("followsCount", 0) or 0,
+            "bio": item.get("biography", ""),
+            "profile_pic_url": item.get("profilePicUrl", ""),
+            "engagement_rate": _calc_engagement_rate(item),
+            "is_verified": item.get("verified", False),
+            "category": item.get("businessCategoryName", ""),
+            "external_url": item.get("externalUrl", "")
+        })
+    
+    influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
+    return influencers[:limit]
 
 
 def get_top_competitors_best_reels(niche_keyword, location="", limit=7, top_reels=15, recency_days=180):

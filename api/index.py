@@ -1958,14 +1958,14 @@ def social_audit_data(audit_id):
     return jsonify({'error': 'No data available yet'}), 404
 
 
-# ==========================================================================
-# INFLUENCER DISCOVERY
-# ==========================================================================
+# In-memory store for influencer discovery jobs
+_influencer_discovery_jobs = {}
+
 
 @app.route('/api/influencers/discover', methods=['POST'])
 @login_required
 def discover_influencers():
-    """Discover Instagram influencers based on niche and follower limits."""
+    """Start influencer discovery in background thread. Returns job_id for polling."""
     data = request.json or {}
     niche = data.get('niche', '').strip()
     location = data.get('location', '').strip()
@@ -1980,28 +1980,64 @@ def discover_influencers():
     if not niche:
         return jsonify({'error': 'Niche keyword is required'}), 400
 
-    try:
-        from execution.instagram_scraper import find_influencers_by_niche
-        
-        influencers = find_influencers_by_niche(
-            niche_keyword=niche,
-            location=location,
-            min_followers=min_followers,
-            max_followers=max_followers,
-            limit=limit
-        )
-        
-        return jsonify({
-            'success': True,
-            'count': len(influencers),
-            'influencers': influencers
-        })
-        
-    except Exception as e:
-        logger.error(f"Error discovering influencers: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    job_id = str(uuid.uuid4())
+    _influencer_discovery_jobs[job_id] = {
+        'status': 'searching',
+        'influencers': [],
+        'error': None
+    }
+
+    def _run_discovery():
+        try:
+            from execution.instagram_scraper import find_influencers_by_niche
+            
+            influencers = find_influencers_by_niche(
+                niche_keyword=niche,
+                location=location,
+                min_followers=min_followers,
+                max_followers=max_followers,
+                limit=limit
+            )
+            
+            _influencer_discovery_jobs[job_id]['influencers'] = influencers
+            _influencer_discovery_jobs[job_id]['status'] = 'done'
+            logger.info(f"Discovery job {job_id}: found {len(influencers)} influencers")
+            
+        except Exception as e:
+            logger.error(f"Discovery job {job_id} failed: {e}")
+            _influencer_discovery_jobs[job_id]['status'] = 'error'
+            _influencer_discovery_jobs[job_id]['error'] = str(e)
+
+    threading.Thread(target=_run_discovery, daemon=True).start()
+    
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'message': 'Influencer discovery started'
+    })
+
+
+@app.route('/api/influencers/discover/<job_id>/status', methods=['GET'])
+@login_required
+def discover_influencers_status(job_id):
+    """Poll for influencer discovery results."""
+    job = _influencer_discovery_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    result = {
+        'status': job['status'],
+        'error': job.get('error')
+    }
+    
+    if job['status'] == 'done':
+        result['influencers'] = job['influencers']
+        result['count'] = len(job['influencers'])
+        result['success'] = True
+        # Clean up after delivery
+        # (keep it for a few minutes in case of re-polls)
+    
+    return jsonify(result)
 
 
 @app.route('/api/influencers/save', methods=['POST'])
