@@ -1765,18 +1765,7 @@ def _run_social_audit_pipeline(job_id, username, niche="", location="", recency_
         job["data"]["profile"] = profile
         job["progress"] = 15
 
-        # Step 1.5: Screenshot the client's Instagram profile page
-        job["status"] = "screenshotting_profile"
-        try:
-            from execution.instagram_scraper import screenshot_instagram_profile
-            ig_screenshot_url = screenshot_instagram_profile(username)
-            if ig_screenshot_url:
-                job["data"]["ig_profile_screenshot"] = ig_screenshot_url
-                logger.info(f"Instagram profile screenshot captured for @{username}")
-            else:
-                logger.warning(f"Could not capture Instagram profile screenshot for @{username}")
-        except Exception as e:
-            logger.error(f"Profile screenshot step failed: {e}")
+        # Skip Step 1.5 (Screenshotting) to save time and Apify credits
         job["progress"] = 18
 
         # Step 2: Discover Top Competitors & Fetch Viral Outlier Reels
