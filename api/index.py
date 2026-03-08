@@ -1889,7 +1889,7 @@ def _run_social_audit_pipeline_from_prospect(prospect_id, recency_days=180):
         client.table('social_prospects').update({'status': 'analyzing'}).eq('id', prospect_id).execute()
         
         # Import dynamically if not at top-level
-        from execution.instagram_scraper import scrape_instagram_profile, screenshot_instagram_profile
+        from execution.instagram_scraper import scrape_instagram_profile
         
         logger.info(f"Scraping profile for @{username}")
         profile = scrape_instagram_profile(username)
@@ -1898,12 +1898,7 @@ def _run_social_audit_pipeline_from_prospect(prospect_id, recency_days=180):
             return
             
         ig_screenshot_url = None
-        try:
-            ig_screenshot_url = screenshot_instagram_profile(username)
-            if ig_screenshot_url:
-                logger.info(f"Instagram profile screenshot captured for @{username}")
-        except Exception as e:
-            logger.error(f"Profile screenshot step failed: {e}")
+
 
         # Step 2: Extract reels from PRE-FOUND competitors
         logger.info(f"Extracting best reels from {len(competitors)} pre-found competitors... (recency: {recency_days} days)")
