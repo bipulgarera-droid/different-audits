@@ -1037,7 +1037,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     if location:
         dork_query += f" {location}"
         
-    dork_query += " -p -reel -reels -explore -tags -stories"
+    dork_query += " -inurl:p -inurl:reel -inurl:explore"
     
     # We create multiple fallback variants. If Google runs out of pages on the first query
     # before we hit the limit, we swap to the next query and keep grabbing profiles.
