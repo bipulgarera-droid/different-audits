@@ -1037,7 +1037,9 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     if location:
         dork_query += f" {location}"
         
-    dork_query += " -inurl:p -inurl:reel -inurl:explore"
+    # No `-inurl:` or `-p` exclusions here! We do NOT filter on the search side, 
+    # because Serper's firewall randomly flags exclusion operators as bot behavior.
+    # The python loop below will safely ignore any scraped link that contains /p/ or /reels/.
     
     # We create multiple fallback variants. If Google runs out of pages on the first query
     # before we hit the limit, we swap to the next query and keep grabbing profiles.
