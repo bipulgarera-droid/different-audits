@@ -572,9 +572,9 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
         hashtags.append(f"{niche_clean}{loc_clean}")
         hashtags.append(loc_clean + niche_clean)
     
-    # Add common variants
-    common_suffixes = ["tips", "life", "coach", "expert", "blog", "community"]
-    for suffix in common_suffixes[:2]:  # Only a couple to save credits
+    # Add common variants (expanded list for higher yield)
+    common_suffixes = ["tips", "life", "coach", "expert", "blog", "community", "brand", "company", "creator", "page"]
+    for suffix in common_suffixes:
         hashtags.append(f"{niche_clean}{suffix}")
     
     # Deduplicate hashtags
@@ -583,7 +583,7 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     logger.info(f"Source 2: Hashtag discovery with {hashtags}...")
     hashtag_results = _run_actor_async("apify/instagram-hashtag-scraper", {
         "hashtags": hashtags,
-        "resultsLimit": min(limit * 4, 200),
+        "resultsLimit": min(limit * 4, 300),
         "resultsType": "posts"
     }, timeout_secs=180)
     
@@ -610,46 +610,53 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
         logger.warning("No candidates found from any source, falling back to Google search")
         return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
     
-    # ── BATCH PROFILE SCRAPE ──
-    # Scrape up to limit*2 profiles (we'll filter many by follower range)
-    target_usernames = all_usernames[:min(limit * 2, 80)]
-    
-    logger.info(f"Batch-scraping {len(target_usernames)} profiles for follower verification...")
-    profiles = _run_actor_async("apify/instagram-profile-scraper", {
-        "usernames": target_usernames
-    }, timeout_secs=240)
-    
+    # ── BATCH PROFILE SCRAPE (Chunked Loop) ──
     influencers = []
-    for item in (profiles or []):
-        username = item.get("username")
-        if not username or item.get("error"):
-            continue
-        
-        followers = item.get("followersCount", 0) or 0
-        
-        # Strict follower range check with actual profile data
-        if followers < min_followers or followers > max_followers:
-            continue
-            
-        influencers.append({
-            "username": username,
-            "full_name": item.get("fullName", ""),
-            "followers": followers,
-            "following": item.get("followsCount", 0) or 0,
-            "bio": item.get("biography", ""),
-            "profile_pic_url": item.get("profilePicUrl", ""),
-            "engagement_rate": _calc_engagement_rate(item),
-            "is_verified": item.get("verified", False),
-            "category": item.get("businessCategoryName", ""),
-            "external_url": item.get("externalUrl", "")
-        })
+    chunk_size = 30  # Number of profiles to verify per batch
     
+    while len(all_usernames) > 0 and len(influencers) < limit:
+        # Take the next chunk of usernames
+        target_usernames = all_usernames[:chunk_size]
+        all_usernames = all_usernames[chunk_size:]
+        
+        logger.info(f"Batch-scraping {len(target_usernames)} profiles for follower verification... (Found so far: {len(influencers)}/{limit})")
+        
+        profiles = _run_actor_async("apify/instagram-profile-scraper", {
+            "usernames": target_usernames
+        }, timeout_secs=240)
+        
+        for item in (profiles or []):
+            username = item.get("username")
+            if not username or item.get("error"):
+                continue
+            
+            followers = item.get("followersCount", 0) or 0
+            
+            # Strict follower range check with actual profile data
+            if followers < min_followers or followers > max_followers:
+                continue
+                
+            influencers.append({
+                "username": username,
+                "full_name": item.get("fullName", ""),
+                "followers": followers,
+                "following": item.get("followsCount", 0) or 0,
+                "bio": item.get("biography", ""),
+                "profile_pic_url": item.get("profilePicUrl", ""),
+                "engagement_rate": _calc_engagement_rate(item),
+                "is_verified": item.get("verified", False),
+                "category": item.get("businessCategoryName", ""),
+                "external_url": item.get("externalUrl", "")
+            })
+            
+            # Stop adding if we hit the limit early inside the batch (though we'd prefer to check the whole batch then sort)
+            
     # Sort by engagement rate to surface the best prospects
     influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
     
     top = influencers[:limit]
     logger.info(f"Influencer Discovery COMPLETE: {len(top)} qualified influencers "
-                f"({min_followers:,}-{max_followers:,} followers) from {len(all_usernames)} candidates")
+                f"({min_followers:,}-{max_followers:,} followers) returned.")
     
     return top
 
