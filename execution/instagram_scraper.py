@@ -1045,10 +1045,11 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     
     # ── 2. Serper Pagination Loop ──
     page = 1
-    # We fetch a larger pool because some snippets won't have follower counts, or they'll be out of bounds
-    target_pool_size = limit * 4 
+    # We fetch a massive pool because most snippets won't have follower counts, or they'll be out of bounds.
+    # We want to keep grabbing pages until we have enough reliable candidates to pass to the final verifier.
+    target_pool_size = limit * 6 
     
-    while len(all_usernames) < target_pool_size and page <= 5: # Max 5 pages (500 results) to protect credits
+    while len(all_usernames) < target_pool_size and page <= 50: # Max 50 pages (5,000 results) to dig deep
         logger.info(f"Fetching Serper Page {page}...")
         
         payload = json.dumps({
