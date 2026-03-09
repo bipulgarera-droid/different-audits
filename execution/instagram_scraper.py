@@ -1050,11 +1050,8 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     target_pool_size = limit * 6 
     
     while len(all_usernames) < target_pool_size and page <= 50: # Max 50 pages (5,000 results) to dig deep
-        logger.info(f"Fetching Serper Page {page}...")
-        
         payload = {
             "q": dork_query,
-            "num": 100, # Max results per page
             "page": page
         }
         
