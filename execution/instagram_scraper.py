@@ -1033,12 +1033,12 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     # Examples:
     # site:instagram.com "fitness coach" india -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags
     
-    dork_query = f"site:instagram.com \"{niche_keyword}\""
+    # Drop the strict site:instagram.com and exclusions because Serper blocks them 
+    # to prevent scraping abuse. Rely on organic keyword matching instead.
+    dork_query = f"\"{niche_keyword}\" instagram influencers"
     if location:
         dork_query += f" {location}"
         
-    dork_query += " -p -reel -reels -explore -tags -stories"
-    
     logger.info(f"Executing Dork: {dork_query}")
     
     all_usernames = []
@@ -1052,8 +1052,13 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     while len(all_usernames) < target_pool_size and page <= 50: # Max 50 pages (5,000 results) to dig deep
         payload = {
             "q": dork_query,
-            "page": page
+            "page": page,
+            "num": 50 # Serper supports num up to 100 on safe queries
         }
+        
+        # Add Geo-location parameter if researching India
+        if location and "india" in location.lower():
+            payload["gl"] = "in"
         
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=20)
