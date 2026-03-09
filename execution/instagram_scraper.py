@@ -583,7 +583,7 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     logger.info(f"Source 2: Hashtag discovery with {hashtags}...")
     hashtag_results = _run_actor_async("apify/instagram-hashtag-scraper", {
         "hashtags": hashtags,
-        "resultsLimit": min(limit * 4, 300),
+        "resultsLimit": min(limit * 15, 600),
         "resultsType": "posts"
     }, timeout_secs=180)
     
@@ -613,13 +613,14 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     # ── BATCH PROFILE SCRAPE (Chunked Loop) ──
     influencers = []
     chunk_size = 30  # Number of profiles to verify per batch
+    loc_lower = location.lower() if location else ""
     
     while len(all_usernames) > 0 and len(influencers) < limit:
         # Take the next chunk of usernames
         target_usernames = all_usernames[:chunk_size]
         all_usernames = all_usernames[chunk_size:]
         
-        logger.info(f"Batch-scraping {len(target_usernames)} profiles for follower verification... (Found so far: {len(influencers)}/{limit})")
+        logger.info(f"Batch-scraping {len(target_usernames)} profiles for verification... (Found so far: {len(influencers)}/{limit})")
         
         profiles = _run_actor_async("apify/instagram-profile-scraper", {
             "usernames": target_usernames
@@ -636,6 +637,17 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
             if followers < min_followers or followers > max_followers:
                 continue
                 
+            # Strict Location Filtering
+            if loc_lower:
+                bio = (item.get("biography") or "").lower()
+                full_name = (item.get("fullName") or "").lower()
+                category = (item.get("businessCategoryName") or "").lower()
+                uname_lower = username.lower()
+                
+                # If the location keyword isn't found anywhere in the profile data, skip it
+                if loc_lower not in bio and loc_lower not in full_name and loc_lower not in category and loc_lower not in uname_lower:
+                    continue
+                
             influencers.append({
                 "username": username,
                 "full_name": item.get("fullName", ""),
@@ -649,13 +661,11 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
                 "external_url": item.get("externalUrl", "")
             })
             
-            # Stop adding if we hit the limit early inside the batch (though we'd prefer to check the whole batch then sort)
-            
     # Sort by engagement rate to surface the best prospects
     influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
     
     top = influencers[:limit]
-    logger.info(f"Influencer Discovery COMPLETE: {len(top)} qualified influencers "
+    logger.info(f"Influencer Discovery COMPLETE: {len(top)} qualified matching influencers "
                 f"({min_followers:,}-{max_followers:,} followers) returned.")
     
     return top
