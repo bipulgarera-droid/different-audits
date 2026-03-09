@@ -1033,23 +1033,22 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     # Examples:
     # site:instagram.com "fitness coach" india -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags
     
-    # Drop the strict site:instagram.com and exclusions because Serper blocks them 
-    # to prevent scraping abuse. Rely on organic keyword matching instead.
-    dork_query = f"\"{niche_keyword}\" instagram influencers"
+    # We use a clean site:instagram.com query without heavy negations (-inurl) 
+    # to avoid triggering Serper's 'Query not allowed' anti-bot protections.
+    # Our python loop will manually filter out post/reel links instead.
+    dork_query = f"site:instagram.com \"{niche_keyword}\""
     if location:
         dork_query += f" {location}"
         
     logger.info(f"Executing Dork: {dork_query}")
     
-    all_usernames = []
+    influencers = []
+    seen_usernames = set()
     
     # ── 2. Serper Pagination Loop ──
     page = 1
-    # We fetch a massive pool because most snippets won't have follower counts, or they'll be out of bounds.
-    # We want to keep grabbing pages until we have enough reliable candidates to pass to the final verifier.
-    target_pool_size = limit * 6 
     
-    while len(all_usernames) < target_pool_size and page <= 50: # Max 50 pages (5,000 results) to dig deep
+    while len(influencers) < limit and page <= 50: # Max 50 pages (5,000 results) to dig deep
         payload = {
             "q": dork_query,
             "page": page,
@@ -1076,6 +1075,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
             for res in organic_results:
                 link = res.get("link", "")
                 snippet = res.get("snippet", "")
+                title = res.get("title", "")
                 
                 # Regex out the username
                 import re
@@ -1083,7 +1083,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                 if match:
                     username = match.group(1).strip('.')
                     skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
-                    if username.lower() in skip:
+                    if username.lower() in skip or username.lower() in seen_usernames:
                         continue
                         
                     # Pre-filter: Check the Snippet for "14K Followers" to avoid wasting time verifying bad accounts
@@ -1093,11 +1093,26 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                         # If a snippet HAS a follower count, we strictly enforce it immediately
                         if estimated_followers < min_followers or estimated_followers > max_followers:
                             continue
-                    else:
-                         # If no follower count is visible in the snippet, we keep them as a wildcard
-                         pass 
-                         
-                    all_usernames.append(username)
+                            
+                    # Extract full name from the title (usually "Name (@username) • Instagram...")
+                    full_name = title.split("(@")[0].split(" - ")[0].strip()
+                    
+                    seen_usernames.add(username.lower())
+                    influencers.append({
+                        "username": username,
+                        "full_name": full_name,
+                        "followers": estimated_followers or 0,
+                        "following": 0,
+                        "bio": snippet,
+                        "profile_pic_url": "", # Serper doesn't provide high-res profile pics consistently
+                        "engagement_rate": 0,  # Cannot calculate without Apify
+                        "is_verified": False,
+                        "category": "",
+                        "external_url": ""
+                    })
+                    
+                    if len(influencers) >= limit:
+                        break
             
             page += 1
             
@@ -1105,83 +1120,6 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
             logger.error(f"Error calling Serper API: {e}")
             break
             
-    # Deduplicate the rapid search results
-    all_usernames = list(dict.fromkeys(all_usernames))
-    logger.info(f"Serper extracted {len(all_usernames)} highly targeted candidates.")
-    
-    if not all_usernames:
-        logger.warning("Serper returned 0 candidates.")
-        return []
-        
-        
-    # ── 3. Final Verification (Option A: Hybrid Apify enrichment) ──
-    # We take the top candidates and run them through the Apify profile scraper 
-    # to guarantee exact follower counts, full bios, engagement rates, and hi-res profile pictures for the UI.
-    influencers = []
-    chunk_size = 30
-    loc_lower = location.lower() if location else ""
-    
-    while len(all_usernames) > 0 and len(influencers) < limit:
-        target_usernames = all_usernames[:chunk_size]
-        all_usernames = all_usernames[chunk_size:]
-        
-        logger.info(f"Verifying {len(target_usernames)} profiles... (Found: {len(influencers)}/{limit})")
-        
-        profiles = _run_actor_async("apify/instagram-profile-scraper", {
-            "usernames": target_usernames
-        }, timeout_secs=240)
-        
-        for item in (profiles or []):
-            username = item.get("username")
-            if not username or item.get("error"):
-                continue
-            
-            followers = item.get("followersCount", 0) or 0
-            
-            # Strict follower range check 
-            if followers < min_followers or followers > max_followers:
-                continue
-                
-            # Strict Location Filtering
-            if loc_lower:
-                bio = (item.get("biography") or "").lower()
-                full_name = (item.get("fullName") or "").lower()
-                category = (item.get("businessCategoryName") or "").lower()
-                uname_lower = username.lower()
-                
-                matched = False
-                search_text = f"{bio} {full_name} {category} {uname_lower}"
-                if loc_lower in search_text:
-                    matched = True
-                
-                if not matched and loc_lower == "india":
-                    india_cities = ["mumbai", "delhi", "bangalore", "bengaluru", "chennai", "hyderabad", "pune", "kolkata", "ahmedabad", "noida", "gurgaon"]
-                    for city in india_cities:
-                        if city in search_text:
-                            matched = True
-                            break
-                            
-                if not matched:
-                    continue
-                
-            influencers.append({
-                "username": username,
-                "full_name": item.get("fullName", ""),
-                "followers": followers,
-                "following": item.get("followsCount", 0) or 0,
-                "bio": item.get("biography", ""),
-                "profile_pic_url": item.get("profilePicUrl", ""),
-                "engagement_rate": _calc_engagement_rate(item),
-                "is_verified": item.get("verified", False),
-                "category": item.get("businessCategoryName", ""),
-                "external_url": item.get("externalUrl", "")
-            })
-            
-            if len(influencers) >= limit:
-                break
-                
-    influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
-    logger.info(f"Serper Discovery COMPLETE: {len(influencers)} qualified matching influencers returned.")
-    
+    logger.info(f"Serper Discovery COMPLETE: {len(influencers)} qualified influencers returned directly.")
     return influencers
 
