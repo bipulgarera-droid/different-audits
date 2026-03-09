@@ -978,3 +978,207 @@ def find_influencers_by_seed(seed_username, location="", min_followers=10000, ma
     
     logger.info(f"Seed Discovery COMPLETE: {len(top)} qualified matching influencers returned.")
     return top
+
+def _get_serper_api_key():
+    key = os.getenv("SERPER_API_KEY")
+    if not key:
+        raise ValueError("SERPER_API_KEY not set in environment")
+    return key
+
+
+def _parse_followers_from_snippet(snippet):
+    """
+    Instagram meta snippets usually follow this format: 
+    '14K Followers, 1,200 Following, 300 Posts - See Instagram photos and videos from...'
+    This function extracts that first number and converts 'K' or 'M' to an integer.
+    """
+    import re
+    if not snippet:
+        return 0
+        
+    match = re.search(r'([\d\.,]+)([kKmM]?)\s+Followers', snippet, re.IGNORECASE)
+    if not match:
+        return 0
+        
+    num_str = match.group(1).replace(',', '')
+    multiplier = match.group(2).upper()
+    
+    try:
+        num = float(num_str)
+        if multiplier == 'K':
+            num *= 1000
+        elif multiplier == 'M':
+            num *= 1000000
+        return int(num)
+    except ValueError:
+        return 0
+
+
+def find_influencers_serper(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
+    """
+    Replaces the Apify Hashtag Scraper. Uses the ultrafast Google Serper API
+    to find thousands of profiles instantly using advanced Dorks.
+    """
+    logger.info(f"Serper Influencer Discovery: '{niche_keyword}' near '{location}' ({min_followers}-{max_followers} followers, limit={limit})")
+    
+    serper_key = _get_serper_api_key()
+    url = "https://google.serper.dev/search"
+    headers = {
+        'X-API-KEY': serper_key,
+        'Content-Type': 'application/json'
+    }
+    
+    # ── 1. Create Google Dorks ──
+    # -inurl: filters out specific posts, reels, tags, and explore pages so we only get root profiles
+    # Examples:
+    # site:instagram.com "fitness coach" india -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags
+    
+    dork_query = f"site:instagram.com \"{niche_keyword}\""
+    if location:
+        dork_query += f" {location}"
+        
+    dork_query += " -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags -inurl:stories"
+    
+    logger.info(f"Executing Dork: {dork_query}")
+    
+    all_usernames = []
+    
+    # ── 2. Serper Pagination Loop ──
+    page = 1
+    # We fetch a larger pool because some snippets won't have follower counts, or they'll be out of bounds
+    target_pool_size = limit * 4 
+    
+    while len(all_usernames) < target_pool_size and page <= 5: # Max 5 pages (500 results) to protect credits
+        logger.info(f"Fetching Serper Page {page}...")
+        
+        payload = json.dumps({
+            "q": dork_query,
+            "num": 100, # Max results per page
+            "page": page
+        })
+        
+        try:
+            response = requests.request("POST", url, headers=headers, data=payload, timeout=20)
+            if response.status_code != 200:
+                logger.error(f"Serper API Error: {response.text}")
+                break
+                
+            data = response.json()
+            organic_results = data.get("organic", [])
+            
+            if not organic_results:
+                logger.warning(f"No more organic results found on page {page}.")
+                break
+                
+            for res in organic_results:
+                link = res.get("link", "")
+                snippet = res.get("snippet", "")
+                
+                # Regex out the username
+                import re
+                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', link)
+                if match:
+                    username = match.group(1).strip('.')
+                    skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                    if username.lower() in skip:
+                        continue
+                        
+                    # Pre-filter: Check the Snippet for "14K Followers" to avoid wasting time verifying bad accounts
+                    estimated_followers = _parse_followers_from_snippet(snippet)
+                    
+                    if estimated_followers > 0:
+                        # If a snippet HAS a follower count, we strictly enforce it immediately
+                        if estimated_followers < min_followers or estimated_followers > max_followers:
+                            continue
+                    else:
+                         # If no follower count is visible in the snippet, we keep them as a wildcard
+                         pass 
+                         
+                    all_usernames.append(username)
+            
+            page += 1
+            
+        except Exception as e:
+            logger.error(f"Error calling Serper API: {e}")
+            break
+            
+    # Deduplicate the rapid search results
+    all_usernames = list(dict.fromkeys(all_usernames))
+    logger.info(f"Serper extracted {len(all_usernames)} highly targeted candidates.")
+    
+    if not all_usernames:
+        logger.warning("Serper returned 0 candidates.")
+        return []
+        
+        
+    # ── 3. Final Verification (Option A: Hybrid Apify enrichment) ──
+    # We take the top candidates and run them through the Apify profile scraper 
+    # to guarantee exact follower counts, full bios, engagement rates, and hi-res profile pictures for the UI.
+    influencers = []
+    chunk_size = 30
+    loc_lower = location.lower() if location else ""
+    
+    while len(all_usernames) > 0 and len(influencers) < limit:
+        target_usernames = all_usernames[:chunk_size]
+        all_usernames = all_usernames[chunk_size:]
+        
+        logger.info(f"Verifying {len(target_usernames)} profiles... (Found: {len(influencers)}/{limit})")
+        
+        profiles = _run_actor_async("apify/instagram-profile-scraper", {
+            "usernames": target_usernames
+        }, timeout_secs=240)
+        
+        for item in (profiles or []):
+            username = item.get("username")
+            if not username or item.get("error"):
+                continue
+            
+            followers = item.get("followersCount", 0) or 0
+            
+            # Strict follower range check 
+            if followers < min_followers or followers > max_followers:
+                continue
+                
+            # Strict Location Filtering
+            if loc_lower:
+                bio = (item.get("biography") or "").lower()
+                full_name = (item.get("fullName") or "").lower()
+                category = (item.get("businessCategoryName") or "").lower()
+                uname_lower = username.lower()
+                
+                matched = False
+                search_text = f"{bio} {full_name} {category} {uname_lower}"
+                if loc_lower in search_text:
+                    matched = True
+                
+                if not matched and loc_lower == "india":
+                    india_cities = ["mumbai", "delhi", "bangalore", "bengaluru", "chennai", "hyderabad", "pune", "kolkata", "ahmedabad", "noida", "gurgaon"]
+                    for city in india_cities:
+                        if city in search_text:
+                            matched = True
+                            break
+                            
+                if not matched:
+                    continue
+                
+            influencers.append({
+                "username": username,
+                "full_name": item.get("fullName", ""),
+                "followers": followers,
+                "following": item.get("followsCount", 0) or 0,
+                "bio": item.get("biography", ""),
+                "profile_pic_url": item.get("profilePicUrl", ""),
+                "engagement_rate": _calc_engagement_rate(item),
+                "is_verified": item.get("verified", False),
+                "category": item.get("businessCategoryName", ""),
+                "external_url": item.get("externalUrl", "")
+            })
+            
+            if len(influencers) >= limit:
+                break
+                
+    influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
+    logger.info(f"Serper Discovery COMPLETE: {len(influencers)} qualified matching influencers returned.")
+    
+    return influencers
+

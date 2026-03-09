@@ -2072,7 +2072,7 @@ def discover_influencers():
 
     def _run_discovery():
         try:
-            from execution.instagram_scraper import find_influencers_by_niche, find_influencers_by_seed
+            from execution.instagram_scraper import find_influencers_serper, find_influencers_by_seed
             
             if seed_username:
                 influencers = find_influencers_by_seed(
@@ -2083,7 +2083,7 @@ def discover_influencers():
                     limit=limit
                 )
             else:
-                influencers = find_influencers_by_niche(
+                influencers = find_influencers_serper(
                     niche_keyword=niche,
                     location=location,
                     min_followers=min_followers,
