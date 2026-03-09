@@ -1052,14 +1052,14 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     while len(all_usernames) < target_pool_size and page <= 50: # Max 50 pages (5,000 results) to dig deep
         logger.info(f"Fetching Serper Page {page}...")
         
-        payload = json.dumps({
+        payload = {
             "q": dork_query,
             "num": 100, # Max results per page
             "page": page
-        })
+        }
         
         try:
-            response = requests.request("POST", url, headers=headers, data=payload, timeout=20)
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
             if response.status_code != 200:
                 logger.error(f"Serper API Error: {response.text}")
                 break
