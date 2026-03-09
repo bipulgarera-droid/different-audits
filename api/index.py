@@ -2051,6 +2051,7 @@ def discover_influencers():
     data = request.json or {}
     niche = data.get('niche', '').strip()
     location = data.get('location', '').strip()
+    seed_username = data.get('seed_username', '').strip()
     
     try:
         min_followers = int(data.get('min_followers', 10000))
@@ -2059,8 +2060,8 @@ def discover_influencers():
     except ValueError:
         return jsonify({'error': 'Follower values and limit must be numbers'}), 400
 
-    if not niche:
-        return jsonify({'error': 'Niche keyword is required'}), 400
+    if not niche and not seed_username:
+        return jsonify({'error': 'Either Niche keyword or Seed Username is required'}), 400
 
     job_id = str(uuid.uuid4())
     _influencer_discovery_jobs[job_id] = {
@@ -2071,15 +2072,24 @@ def discover_influencers():
 
     def _run_discovery():
         try:
-            from execution.instagram_scraper import find_influencers_by_niche
+            from execution.instagram_scraper import find_influencers_by_niche, find_influencers_by_seed
             
-            influencers = find_influencers_by_niche(
-                niche_keyword=niche,
-                location=location,
-                min_followers=min_followers,
-                max_followers=max_followers,
-                limit=limit
-            )
+            if seed_username:
+                influencers = find_influencers_by_seed(
+                    seed_username=seed_username,
+                    location=location,
+                    min_followers=min_followers,
+                    max_followers=max_followers,
+                    limit=limit
+                )
+            else:
+                influencers = find_influencers_by_niche(
+                    niche_keyword=niche,
+                    location=location,
+                    min_followers=min_followers,
+                    max_followers=max_followers,
+                    limit=limit
+                )
             
             _influencer_discovery_jobs[job_id]['influencers'] = influencers
             _influencer_discovery_jobs[job_id]['status'] = 'done'

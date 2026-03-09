@@ -848,3 +848,104 @@ def _calc_engagement_rate(profile):
         return round((avg_eng / followers) * 100, 2)
 
     return 0
+
+def find_influencers_by_seed(seed_username, location="", min_followers=10000, max_followers=100000, limit=20):
+    """
+    Lookalike Crawler: 
+    Finds influencers by recursively asking Instagram for "Related Accounts" 
+    starting from a seed account.
+    """
+    logger.info(f"Influencer Discovery by Seed: '{seed_username}' ({min_followers}-{max_followers} followers, limit={limit})")
+    
+    influencers = []
+    seen_usernames = set()
+    target_seeds = [seed_username.lower().replace("@", "")]
+    loc_lower = location.lower() if location else ""
+    
+    # Track the original seed so we don't accidentally return it as a new discovery
+    seen_usernames.add(target_seeds[0])
+    
+    # We will loop until we have enough qualified influencers OR we run out of seeds
+    while len(target_seeds) > 0 and len(influencers) < limit:
+        current_seed = target_seeds.pop(0)
+        
+        logger.info(f"Crawling related accounts for seed: @{current_seed}...")
+        related_results = _run_actor_async("thenetaji/instagram-related-user-scraper", {
+            "profileUrls": [f"https://www.instagram.com/{current_seed}/"],
+            "maxItems": 100
+        }, timeout_secs=120)
+        
+        new_candidates = []
+        for res in (related_results or []):
+            related_username = res.get("username")
+            if related_username and related_username.lower() not in seen_usernames:
+                new_candidates.append(related_username.lower())
+                seen_usernames.add(related_username.lower())
+                
+        if not new_candidates:
+            logger.info(f"No new candidates found for @{current_seed}. Moving to next.")
+            continue
+            
+        logger.info(f"Found {len(new_candidates)} related accounts for @{current_seed}. Batch verifying...")
+        
+        # Batch verify the new candidates using profile-scraper for accurate followers & location
+        chunk_size = 30
+        for i in range(0, len(new_candidates), chunk_size):
+            chunk = new_candidates[i:i+chunk_size]
+            
+            # If we've hit the limit while processing chunks of this seed's children, break out
+            if len(influencers) >= limit:
+                break
+                
+            profiles = _run_actor_async("apify/instagram-profile-scraper", {
+                "usernames": chunk
+            }, timeout_secs=240)
+            
+            for item in (profiles or []):
+                username = item.get("username")
+                if not username or item.get("error"):
+                    continue
+                
+                followers = item.get("followersCount", 0) or 0
+                
+                if followers < min_followers or followers > max_followers:
+                    continue
+                    
+                # Strict Location Filtering
+                if loc_lower:
+                    bio = (item.get("biography") or "").lower()
+                    full_name = (item.get("fullName") or "").lower()
+                    category = (item.get("businessCategoryName") or "").lower()
+                    uname_lower = username.lower()
+                    
+                    if loc_lower not in bio and loc_lower not in full_name and loc_lower not in category and loc_lower not in uname_lower:
+                        continue
+                        
+                # Passes all checks! 
+                influencers.append({
+                    "username": username,
+                    "full_name": item.get("fullName", ""),
+                    "followers": followers,
+                    "following": item.get("followsCount", 0) or 0,
+                    "bio": item.get("biography", ""),
+                    "profile_pic_url": item.get("profilePicUrl", ""),
+                    "engagement_rate": _calc_engagement_rate(item),
+                    "is_verified": item.get("verified", False),
+                    "category": item.get("businessCategoryName", ""),
+                    "external_url": item.get("externalUrl", "")
+                })
+                
+                # Add this newly qualified influencer to our seed queue to crawl *their* related accounts next if needed
+                if username.lower() not in target_seeds:
+                    target_seeds.append(username.lower())
+                    
+                # Stop adding if limit reached
+                if len(influencers) >= limit:
+                    break
+    
+    # Sort final results by engagement rate 
+    influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
+    top = influencers[:limit]
+    
+    logger.info(f"Seed Discovery COMPLETE: {len(top)} qualified matching influencers returned.")
+    return top

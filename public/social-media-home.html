@@ -189,11 +189,15 @@
             <h3 class="text-xl font-bold text-white mb-1">Discover Influencers</h3>
             <p class="text-gray-400 text-sm mb-6">Find creators by niche and follower size</p>
 
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                 <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Niche/Keyword <span
-                            class="text-red-400">*</span></label>
+                    <label class="text-sm text-gray-400 mb-1 block">Niche/Keyword</label>
                     <input id="disc-niche" type="text" placeholder="e.g. fitness coach"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Seed Account (Optional)</label>
+                    <input id="disc-seed" type="text" placeholder="e.g. @therock"
                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
                 </div>
                 <div>
@@ -211,11 +215,13 @@
                     <input id="disc-max" type="number" value="100000"
                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
                 </div>
-                <div>
-                    <label class="text-sm text-gray-400 mb-1 block">Num Influencers</label>
-                    <input id="disc-limit" type="number" value="50"
-                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
-                </div>
+                <!-- Num Influencers is moved below or to a new row -->
+            </div>
+
+            <div class="mb-6">
+                <label class="text-sm text-gray-400 mb-1 block">Target Number of Influencers</label>
+                <input id="disc-limit" type="number" value="10"
+                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
             </div>
 
             <button onclick="runDiscovery()" id="btn-discover"
@@ -340,12 +346,16 @@
 
         async function runDiscovery() {
             const niche = document.getElementById('disc-niche').value.trim();
+            const seedUsername = document.getElementById('disc-seed').value.trim();
             const location = document.getElementById('disc-location').value.trim();
             const minStr = document.getElementById('disc-min').value;
             const maxStr = document.getElementById('disc-max').value;
             const limitStr = document.getElementById('disc-limit').value;
 
-            if (!niche) { alert("Please enter a niche keyword (e.g., 'fitness')"); return; }
+            if (!niche && !seedUsername) {
+                alert("Please enter either a Niche keyword or a Seed Account (@username)");
+                return;
+            }
 
             const btn = document.getElementById('btn-discover');
             btn.disabled = true;
@@ -360,7 +370,9 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        niche, location,
+                        niche,
+                        seed_username: seedUsername,
+                        location,
                         min_followers: parseInt(minStr) || 10000,
                         max_followers: parseInt(maxStr) || 100000,
                         limit: parseInt(limitStr) || 50
