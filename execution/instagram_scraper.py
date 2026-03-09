@@ -1033,12 +1033,11 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     # Examples:
     # site:instagram.com "fitness coach" india -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags
     
-    # We use a clean site:instagram.com query without heavy negations (-inurl) 
-    # to avoid triggering Serper's 'Query not allowed' anti-bot protections.
-    # Our python loop will manually filter out post/reel links instead.
     dork_query = f"site:instagram.com \"{niche_keyword}\""
     if location:
         dork_query += f" {location}"
+        
+    dork_query += " -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags -inurl:stories"
         
     logger.info(f"Executing Dork: {dork_query}")
     
