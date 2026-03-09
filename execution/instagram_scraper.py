@@ -4,9 +4,10 @@ Instagram Scraper — Apify API integration
 Fetches Instagram profile data, reels, and discovers competitors/influencers.
 
 Actors used:
-- instaprism/instagram-reels-scraper — Reels with video URLs, metrics, captions
+- apify/instagram-reel-scraper — Dedicated reel scraper with native recency filter
 - apify/instagram-profile-scraper — Profile basics (bio, followers, etc.)
 - apify/google-search-scraper — Competitor discovery via Google (site:instagram.com search)
+- apify/instagram-hashtag-scraper — Hashtag-based influencer discovery
 """
 import os
 import time
@@ -326,6 +327,76 @@ def scrape_instagram_reels(username, max_reels=20, profile_data=None, recency_da
     return reels
 
 
+def scrape_competitor_reels_batch(usernames, max_reels_per_profile=20, recency_days=180):
+    """
+    Use apify/instagram-reel-scraper to fetch reels for multiple competitors in one batch call.
+    This actor has native recency filtering (onlyPostsNewerThan) and returns rich reel data
+    including views, likes, shares, captions, transcripts.
+    
+    Returns: dict mapping username -> list of reels in our standard format.
+    """
+    if not usernames:
+        return {}
+    
+    # Convert recency_days to the format the actor expects
+    recency_str = f"{recency_days} days" if recency_days > 0 else None
+    
+    input_data = {
+        "username": usernames,
+        "resultsLimit": max_reels_per_profile,
+    }
+    if recency_str:
+        input_data["onlyPostsNewerThan"] = recency_str
+    
+    logger.info(f"Batch scraping reels for {len(usernames)} competitors via instagram-reel-scraper "
+                f"(max {max_reels_per_profile}/profile, recency: {recency_str or 'all time'})...")
+    
+    items = _run_actor_async("apify/instagram-reel-scraper", input_data, timeout_secs=300)
+    
+    if not items:
+        logger.warning("Reel scraper returned no items")
+        return {}
+    
+    logger.info(f"Reel scraper returned {len(items)} total reels across all competitors")
+    
+    # Group by owner username and convert to our standard reel format
+    reels_by_user = {}
+    for item in items:
+        owner = item.get("ownerUsername", "")
+        if not owner:
+            continue
+        
+        reel = {
+            "id": str(item.get("id", "")),
+            "url": item.get("url", "") or f"https://www.instagram.com/p/{item.get('shortCode', '')}/",
+            "video_url": item.get("videoUrl", ""),
+            "caption": item.get("caption", ""),
+            "views": item.get("videoPlayCount", 0) or item.get("videoViewCount", 0) or 0,
+            "likes": item.get("likesCount", 0) or 0,
+            "comments": item.get("commentsCount", 0) or 0,
+            "timestamp": item.get("timestamp", ""),
+            "hashtags": item.get("hashtags", []),
+            "music": item.get("musicInfo", {}),
+            "thumbnail_url": item.get("displayUrl", ""),
+            "owner_username": owner,
+            "total_engagement": (item.get("likesCount", 0) or 0) + (item.get("commentsCount", 0) or 0),
+            "raw": item
+        }
+        
+        if owner not in reels_by_user:
+            reels_by_user[owner] = []
+        reels_by_user[owner].append(reel)
+    
+    # Sort each competitor's reels by views descending
+    for user in reels_by_user:
+        reels_by_user[user].sort(key=lambda x: x.get("views", 0), reverse=True)
+    
+    logger.info(f"Reels grouped for {len(reels_by_user)} competitors: "
+                f"{', '.join(f'@{u}={len(r)}' for u, r in reels_by_user.items())}")
+    
+    return reels_by_user
+
+
 def discover_competitors(niche_keyword, location="", min_followers=50000, max_followers=1000000, limit=10):
     """
     Discover top-tier competitors using Google Search + Instagram Profile Scraper.
@@ -442,82 +513,121 @@ def discover_competitors(niche_keyword, location="", min_followers=50000, max_fo
     return top
 
 
-def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
+def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=50):
     """
-    Discover influencers using Instagram Search API (not Google dorks).
+    Discover influencers using a multi-source strategy for high volume:
     
-    Step 1: Search Instagram directly for users matching the niche keyword.
-            The search actor returns username + follower count, so we can filter
-            BEFORE scraping full profiles (saves Apify credits).
-    Step 2: Filter by follower range.
-    Step 3: Scrape full profiles only for the filtered matches.
+    Source 1: Instagram Search API — username search for niche + location
+    Source 2: Hashtag-based discovery via apify/instagram-hashtag-scraper —
+              scrapes posts from niche hashtags, extracts unique account usernames
+    Source 3: Google fallback if above return nothing
+    
+    All sources are deduplicated, then batch-profiled and filtered by follower range.
+    Default limit is 50 to support bulk outreach workflows.
     """
+    import re
+    
     search_query = f"{niche_keyword} {location}".strip()
     
-    logger.info(f"Influencer Discovery: Instagram search '{search_query}' ({min_followers}-{max_followers} followers)")
+    logger.info(f"Influencer Discovery: '{search_query}' ({min_followers:,}-{max_followers:,} followers, limit={limit})")
     
-    # Step 1: Search Instagram directly for users
+    all_usernames = []  # Collect from all sources, deduplicate later
+    
+    # ── SOURCE 1: Instagram Search API ──
+    logger.info("Source 1: Instagram user search...")
     search_results = _run_actor_async("apify/instagram-search-scraper", {
         "search": search_query,
         "searchType": "user",
-        "resultsLimit": min(limit * 5, 100)  # Fetch extra to account for filtering
+        "resultsLimit": min(limit * 5, 200)
     }, timeout_secs=120)
     
-    if not search_results:
-        logger.warning("Instagram search returned no results, falling back to Google search")
-        return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
-    
-    # Step 2: Filter by follower range using the search results
-    candidates = []
-    for item in search_results:
+    search_candidates = []
+    for item in (search_results or []):
         username = item.get("username") or item.get("name", "")
         followers = item.get("followersCount", 0) or item.get("followers", 0) or 0
         
         if not username:
             continue
-            
-        # Skip system pages
+        
         skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
         if username.lower() in skip:
             continue
         
-        # Filter by follower range BEFORE scraping full profiles
+        # Pre-filter by follower range (using search data — rough but saves API calls)
         if followers < min_followers or followers > max_followers:
-            logger.info(f"Skipping @{username} — {followers:,} followers (outside {min_followers:,}-{max_followers:,})")
             continue
         
-        candidates.append({
-            "username": username,
-            "search_followers": followers,
-            "full_name": item.get("fullName", "") or item.get("full_name", ""),
-            "profile_pic_url": item.get("profilePicUrl", "") or item.get("profile_pic_url", ""),
-            "bio": item.get("biography", "") or item.get("bio", ""),
-            "is_verified": item.get("verified", False) or item.get("is_verified", False),
-        })
+        search_candidates.append(username)
     
-    logger.info(f"Instagram search: {len(search_results)} results → {len(candidates)} match follower range")
+    logger.info(f"Instagram search: {len(search_results or [])} results → {len(search_candidates)} in follower range")
+    all_usernames.extend(search_candidates)
     
-    if not candidates:
-        logger.warning("No candidates matched follower range, falling back to Google search")
-        return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
+    # ── SOURCE 2: Hashtag-based Discovery ──
+    # Generate niche hashtags from the keyword + location
+    niche_clean = re.sub(r'[^a-zA-Z0-9]', '', niche_keyword.lower())
+    loc_clean = re.sub(r'[^a-zA-Z0-9]', '', location.lower()) if location else ""
     
-    # Step 3: Scrape full profiles for the filtered candidates (more accurate data)
-    target_usernames = [c["username"] for c in candidates[:min(limit * 2, 30)]]
+    hashtags = [niche_clean]
+    if loc_clean:
+        hashtags.append(f"{niche_clean}{loc_clean}")
+        hashtags.append(loc_clean + niche_clean)
     
-    logger.info(f"Scraping full profiles for {len(target_usernames)} candidates...")
-    profiles = _run_actor_async("apify/instagram-profile-scraper", {
-        "usernames": target_usernames
+    # Add common variants
+    common_suffixes = ["tips", "life", "coach", "expert", "blog", "community"]
+    for suffix in common_suffixes[:2]:  # Only a couple to save credits
+        hashtags.append(f"{niche_clean}{suffix}")
+    
+    # Deduplicate hashtags
+    hashtags = list(dict.fromkeys(hashtags))
+    
+    logger.info(f"Source 2: Hashtag discovery with {hashtags}...")
+    hashtag_results = _run_actor_async("apify/instagram-hashtag-scraper", {
+        "hashtags": hashtags,
+        "resultsLimit": min(limit * 4, 200),
+        "resultsType": "posts"
     }, timeout_secs=180)
     
+    hashtag_usernames = []
+    for post in (hashtag_results or []):
+        owner = post.get("ownerUsername", "") or post.get("owner_username", "")
+        if not owner:
+            # Try nested owner object
+            owner_obj = post.get("owner", {})
+            owner = owner_obj.get("username", "") if owner_obj else ""
+        if owner and owner.lower() not in {"p", "reel", "reels", "explore"}:
+            hashtag_usernames.append(owner)
+    
+    # Deduplicate hashtag usernames
+    hashtag_usernames = list(dict.fromkeys(hashtag_usernames))
+    logger.info(f"Hashtag discovery: {len(hashtag_results or [])} posts → {len(hashtag_usernames)} unique accounts")
+    all_usernames.extend(hashtag_usernames)
+    
+    # ── DEDUPLICATE all sources ──
+    all_usernames = list(dict.fromkeys(all_usernames))
+    logger.info(f"Total unique candidates from all sources: {len(all_usernames)}")
+    
+    if not all_usernames:
+        logger.warning("No candidates found from any source, falling back to Google search")
+        return _find_influencers_google_fallback(niche_keyword, location, min_followers, max_followers, limit)
+    
+    # ── BATCH PROFILE SCRAPE ──
+    # Scrape up to limit*2 profiles (we'll filter many by follower range)
+    target_usernames = all_usernames[:min(limit * 2, 80)]
+    
+    logger.info(f"Batch-scraping {len(target_usernames)} profiles for follower verification...")
+    profiles = _run_actor_async("apify/instagram-profile-scraper", {
+        "usernames": target_usernames
+    }, timeout_secs=240)
+    
     influencers = []
-    for item in profiles:
+    for item in (profiles or []):
         username = item.get("username")
         if not username or item.get("error"):
             continue
         
         followers = item.get("followersCount", 0) or 0
         
-        # Double-check follower range with actual profile data
+        # Strict follower range check with actual profile data
         if followers < min_followers or followers > max_followers:
             continue
             
@@ -538,7 +648,8 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     influencers.sort(key=lambda x: x["engagement_rate"], reverse=True)
     
     top = influencers[:limit]
-    logger.info(f"Found {len(top)} qualified influencers matching {min_followers}-{max_followers} followers.")
+    logger.info(f"Influencer Discovery COMPLETE: {len(top)} qualified influencers "
+                f"({min_followers:,}-{max_followers:,} followers) from {len(all_usernames)} candidates")
     
     return top
 
@@ -611,35 +722,28 @@ def _find_influencers_google_fallback(niche_keyword, location="", min_followers=
 def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, recency_days=180):
     """
     Computes outlier reels using an already-discovered list of competitors.
-    Skips the heavy Google Search / discovery phase.
+    Uses apify/instagram-reel-scraper for reliable, recency-filtered reel data.
     """
     logger.info(f"=== REEL OUTLIER ENGINE: Processing {len(competitors)} pre-found competitors ===")
+    
+    # Batch-fetch reels for all competitors at once using the dedicated reel scraper
+    usernames = [comp["username"] for comp in competitors[:limit]]
+    reels_by_user = scrape_competitor_reels_batch(usernames, max_reels_per_profile=30, recency_days=recency_days)
     
     all_reels = []
     competitors_data = []
     
-    # Process up to 'limit' competitors
     for comp in competitors[:limit]:
         uname = comp["username"]
         followers = comp.get("followers", 0)
-        raw_profile = comp.get("raw", {})
-        
-        # Scrape their recent reels
-        logger.info(f"Fetching recent reels for @{uname}...")
-        
-        # If the pre-found competitor was loaded from the DB, its "raw" data might have been 
-        # cleaned out to save space. In that case, we need to perform a fresh scrape.
-        if raw_profile and ("latestPosts" in raw_profile or "recentPosts" in raw_profile):
-            reels = scrape_instagram_reels(uname, max_reels=30, profile_data={"raw": raw_profile}, recency_days=recency_days)
-        else:
-            logger.info(f"@{uname}: No pre-fetched posts in memory, scraping profile from Instagram...")
-            reels = scrape_instagram_reels(uname, max_reels=30, recency_days=recency_days)
-        
+        reels = reels_by_user.get(uname, [])
         
         if not reels:
             logger.warning(f"@{uname}: no reels found")
             continue
-            
+        
+        logger.info(f"@{uname}: {len(reels)} reels fetched")
+        
         # Compute average engagement for this competitor's reels
         avg_eng = sum(r.get("likes", 0) + r.get("comments", 0) for r in reels) / max(len(reels), 1)
         
@@ -657,13 +761,8 @@ def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, rece
         # Score every reel
         for reel in reels:
             reel_eng = reel.get("likes", 0) + reel.get("comments", 0)
-            
-            # Outlier vs self
             outlier_vs_self = reel_eng / max(avg_eng, 1)
-            
-            # Engagement / follower ratio
             eng_follower_ratio = (reel_eng / max(followers, 1)) * 100
-            
             outlier_score = outlier_vs_self * eng_follower_ratio
             
             reel["outlier_score"] = round(outlier_score, 2)
@@ -672,7 +771,7 @@ def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, rece
             reel["competitor"] = comp_info
             
             all_reels.append(reel)
-            
+    
     logger.info(f"Total reels collected: {len(all_reels)} from {len(competitors_data)} competitors")
     
     # Sort by outlier score descending
@@ -689,12 +788,10 @@ def get_best_reels_from_competitor_list(competitors, limit=7, top_reels=15, rece
 def get_top_competitors_best_reels(niche_keyword, location="", limit=7, top_reels=15, recency_days=180):
     """
     Complete Competitor Outlier Engine:
-    1. Discover top competitors via Instagram Search (returns full profiles + posts in ONE call)
-    2. Extract ALL reels from their latestPosts
+    1. Discover top competitors via Google Search + Instagram Profile Scraper
+    2. Batch-fetch their reels via apify/instagram-reel-scraper (with recency filter)
     3. Compute outlier score for each reel
     4. Return the top N outlier reels across all competitors
-    
-    Outlier score = (reel_engagement / competitor_avg_engagement) * (engagement / followers)
     """
     logger.info(f"=== COMPETITOR OUTLIER ENGINE START: {niche_keyword} in {location} ===")
     
@@ -703,72 +800,8 @@ def get_top_competitors_best_reels(niche_keyword, location="", limit=7, top_reel
         logger.warning(f"No competitors found for {niche_keyword} {location}")
         return []
 
-    all_reels = []
-    competitors_data = []
-    
-    for comp in competitors:
-        uname = comp["username"]
-        followers = comp["followers"]
-        raw_profile = comp.get("raw", {})
-        
-        # The search scraper already returned latestPosts — reuse them directly!
-        # No need for a second API call
-        reels = scrape_instagram_reels(uname, max_reels=30, profile_data={"raw": raw_profile}, recency_days=recency_days)
-        
-        logger.info(f"@{uname}: {followers} followers, {len(reels)} reels with video content")
-        
-        if not reels:
-            logger.warning(f"@{uname}: no reels found")
-            continue
-        
-        # Compute average engagement for this competitor's reels
-        avg_eng = sum(r.get("likes", 0) + r.get("comments", 0) for r in reels) / max(len(reels), 1)
-        
-        comp_info = {
-            "username": uname,
-            "full_name": comp.get("full_name", ""),
-            "followers": followers,
-            "profile_pic_url": comp.get("profile_pic_url", ""),
-            "engagement_rate": comp.get("engagement_rate", 0),
-            "avg_engagement": avg_eng,
-            "reels_count": len(reels)
-        }
-        competitors_data.append(comp_info)
-        
-        # Score every reel
-        for reel in reels:
-            reel_eng = reel.get("likes", 0) + reel.get("comments", 0)
-            
-            # Outlier ratio: how much better is this reel vs the competitor's average?
-            outlier_vs_self = reel_eng / max(avg_eng, 1)
-            
-            # Engagement-follower ratio: how well did this reel engage relative to audience size?
-            eng_follower_ratio = (reel_eng / max(followers, 1)) * 100
-            
-            # Combined outlier score (higher = more viral outlier)
-            outlier_score = outlier_vs_self * eng_follower_ratio
-            
-            reel["outlier_score"] = round(outlier_score, 2)
-            reel["outlier_vs_self"] = round(outlier_vs_self, 2)
-            reel["eng_follower_ratio"] = round(eng_follower_ratio, 2)
-            reel["competitor"] = comp_info
-            
-            all_reels.append(reel)
-    
-    logger.info(f"Total reels collected: {len(all_reels)} from {len(competitors_data)} competitors")
-    
-    # Sort by outlier score descending — true viral outliers bubble to the top
-    all_reels.sort(key=lambda x: x.get("outlier_score", 0), reverse=True)
-    
-    # Return the top N outliers
-    top = all_reels[:top_reels]
-    
-    if top:
-        logger.info(f"Top outlier: @{top[0].get('competitor', {}).get('username', '?')} — "
-                     f"score={top[0]['outlier_score']}, views={top[0].get('views', 0)}")
-    
-    logger.info(f"=== COMPETITOR OUTLIER ENGINE COMPLETE: returning {len(top)} outlier reels ===")
-    return top
+    # Use the dedicated reel scraper in a single batch call
+    return get_best_reels_from_competitor_list(competitors, limit=limit, top_reels=top_reels, recency_days=recency_days)
 
 
 # ─────────────────────────────────────────────
