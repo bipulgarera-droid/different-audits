@@ -1038,87 +1038,100 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
         dork_query += f" {location}"
         
     dork_query += " -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags -inurl:stories"
-        
-    logger.info(f"Executing Dork: {dork_query}")
+    
+    # We create multiple fallback variants. If Google runs out of pages on the first query
+    # before we hit the limit, we swap to the next query and keep grabbing profiles.
+    queries = [
+        dork_query,
+        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "startup"'),
+        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "brand"'),
+        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "store"')
+    ]
     
     influencers = []
     seen_usernames = set()
     
-    # ── 2. Serper Pagination Loop ──
-    page = 1
-    
-    while len(influencers) < limit and page <= 50: # Max 50 pages (5,000 results) to dig deep
-        payload = {
-            "q": dork_query,
-            "page": page,
-            "num": 50 # Serper supports num up to 100 on safe queries
-        }
-        
-        # Add Geo-location parameter if researching India
-        if location and "india" in location.lower():
-            payload["gl"] = "in"
-        
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=20)
-            if response.status_code != 200:
-                logger.error(f"Serper API Error: {response.text}")
-                break
-                
-            data = response.json()
-            organic_results = data.get("organic", [])
-            
-            if not organic_results:
-                logger.warning(f"No more organic results found on page {page}.")
-                break
-                
-            for res in organic_results:
-                link = res.get("link", "")
-                snippet = res.get("snippet", "")
-                title = res.get("title", "")
-                
-                # Regex out the username
-                import re
-                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', link)
-                if match:
-                    username = match.group(1).strip('.')
-                    skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
-                    if username.lower() in skip or username.lower() in seen_usernames:
-                        continue
-                        
-                    # Pre-filter: Check the Snippet for "14K Followers" to avoid wasting time verifying bad accounts
-                    estimated_followers = _parse_followers_from_snippet(snippet)
-                    
-                    if estimated_followers > 0:
-                        # If a snippet HAS a follower count, we strictly enforce it immediately
-                        if estimated_followers < min_followers or estimated_followers > max_followers:
-                            continue
-                            
-                    # Extract full name from the title (usually "Name (@username) • Instagram...")
-                    full_name = title.split("(@")[0].split(" - ")[0].strip()
-                    
-                    seen_usernames.add(username.lower())
-                    influencers.append({
-                        "username": username,
-                        "full_name": full_name,
-                        "followers": estimated_followers or 0,
-                        "following": 0,
-                        "bio": snippet,
-                        "profile_pic_url": "", # Serper doesn't provide high-res profile pics consistently
-                        "engagement_rate": 0,  # Cannot calculate without Apify
-                        "is_verified": False,
-                        "category": "",
-                        "external_url": ""
-                    })
-                    
-                    if len(influencers) >= limit:
-                        break
-            
-            page += 1
-            
-        except Exception as e:
-            logger.error(f"Error calling Serper API: {e}")
+    for current_dork in queries:
+        if len(influencers) >= limit:
             break
             
+        logger.info(f"Executing Dork: {current_dork}")
+        
+        # ── 2. Serper Pagination Loop ──
+        page = 1
+        
+        while len(influencers) < limit and page <= 50: # Max 50 pages (5,000 results) to dig deep
+            payload = {
+                "q": current_dork,
+                "page": page,
+                "num": 50 # Serper supports num up to 100 on safe queries
+            }
+            
+            # Add Geo-location parameter if researching India
+            if location and "india" in location.lower():
+                payload["gl"] = "in"
+            
+            try:
+                response = requests.post(url, headers=headers, json=payload, timeout=20)
+                if response.status_code != 200:
+                    logger.error(f"Serper API Error: {response.text}")
+                    break
+                    
+                data = response.json()
+                organic_results = data.get("organic", [])
+                
+                if not organic_results:
+                    logger.warning(f"No more organic results found on page {page} for this query.")
+                    break
+                    
+                for res in organic_results:
+                    link = res.get("link", "")
+                    snippet = res.get("snippet", "")
+                    title = res.get("title", "")
+                    
+                    # Regex out the username
+                    import re
+                    match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', link)
+                    if match:
+                        username = match.group(1).strip('.')
+                        skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                        if username.lower() in skip or username.lower() in seen_usernames:
+                            continue
+                            
+                        # Pre-filter: Check the Snippet for "14K Followers" to avoid wasting time verifying bad accounts
+                        estimated_followers = _parse_followers_from_snippet(snippet)
+                        
+                        if estimated_followers > 0:
+                            # If a snippet HAS a follower count, we strictly enforce it immediately
+                            if estimated_followers < min_followers or estimated_followers > max_followers:
+                                continue
+                                
+                        # Extract full name from the title (usually "Name (@username) • Instagram...")
+                        full_name = title.split("(@")[0].split(" - ")[0].strip()
+                        
+                        seen_usernames.add(username.lower())
+                        influencers.append({
+                            "username": username,
+                            "full_name": full_name,
+                            "followers": estimated_followers or 0,
+                            "following": 0,
+                            "bio": snippet,
+                            "profile_pic_url": "", # Serper doesn't provide high-res profile pics consistently
+                            "engagement_rate": 0,  # Cannot calculate without Apify
+                            "is_verified": False,
+                            "category": "",
+                            "external_url": ""
+                        })
+                        
+                        if len(influencers) >= limit:
+                            break
+                
+                page += 1
+                
+            except Exception as e:
+                logger.error(f"Error calling Serper API: {e}")
+                break
+                
     logger.info(f"Serper Discovery COMPLETE: {len(influencers)} qualified influencers returned directly.")
     return influencers
 
