@@ -1037,7 +1037,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     if location:
         dork_query += f" {location}"
         
-    dork_query += " -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags -inurl:stories"
+    dork_query += " -p -reel -reels -explore -tags -stories"
     
     logger.info(f"Executing Dork: {dork_query}")
     
