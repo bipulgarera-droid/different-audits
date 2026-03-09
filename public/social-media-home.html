@@ -211,6 +211,11 @@
                     <input id="disc-max" type="number" value="100000"
                         class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
                 </div>
+                <div>
+                    <label class="text-sm text-gray-400 mb-1 block">Num Influencers</label>
+                    <input id="disc-limit" type="number" value="50"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                </div>
             </div>
 
             <button onclick="runDiscovery()" id="btn-discover"
@@ -248,6 +253,31 @@
             <div class="w-full bg-gray-800 rounded-full h-2 mt-4">
                 <div id="slides-progress-bar" class="bg-violet-500 h-2 rounded-full transition-all" style="width: 0%">
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analyze Prospect Options Modal -->
+    <div id="analyze-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        style="display:none;">
+        <div class="glass-card glow-violet p-8 max-w-sm w-full mx-4 text-center">
+            <h3 class="text-xl font-bold text-white mb-2">Run Analysis</h3>
+            <p class="text-gray-400 text-sm mb-6">Configure how deep the scraper should look for viral reels.</p>
+
+            <div class="text-left mb-6">
+                <label class="text-sm text-gray-400 mb-1 block">Reel Recency (Days)</label>
+                <input id="analyze-recency" type="number" value="180"
+                    class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-violet-500 transition-colors" />
+                <p class="text-xs text-gray-500 mt-2">How far back should we jump to find reels? (e.g. 30, 90, 180, 365)
+                </p>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('analyze-modal').style.display = 'none'"
+                    class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-lg font-medium border border-gray-700">Cancel</button>
+                <button id="btn-confirm-analyze"
+                    class="flex-1 bg-violet-600 hover:bg-violet-500 text-white px-4 py-3 rounded-lg font-medium">Start
+                    Analysis</button>
             </div>
         </div>
     </div>
@@ -313,6 +343,7 @@
             const location = document.getElementById('disc-location').value.trim();
             const minStr = document.getElementById('disc-min').value;
             const maxStr = document.getElementById('disc-max').value;
+            const limitStr = document.getElementById('disc-limit').value;
 
             if (!niche) { alert("Please enter a niche keyword (e.g., 'fitness')"); return; }
 
@@ -332,7 +363,7 @@
                         niche, location,
                         min_followers: parseInt(minStr) || 10000,
                         max_followers: parseInt(maxStr) || 100000,
-                        limit: 20
+                        limit: parseInt(limitStr) || 50
                     })
                 });
 
@@ -875,20 +906,31 @@
             } catch (err) { alert('Error: ' + err.message); }
         }
 
-        async function analyzeProspect(prospectId) {
-            const recencyInput = prompt('Reel Recency in days (e.g., 30, 90, 180):', '180');
-            if (recencyInput === null) return; // User cancelled
-            const recency_days = parseInt(recencyInput) || 180;
+        function analyzeProspect(prospectId) {
+            const modal = document.getElementById('analyze-modal');
+            modal.style.display = 'flex';
 
-            try {
-                const res = await fetch(`/api/influencers/${prospectId}/analyze`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ recency_days })
-                });
-                const data = await res.json();
-                if (data.success) { loadProspects(); } else { alert('Error: ' + data.error); }
-            } catch (err) { alert('Error: ' + err.message); }
+            const confirmBtn = document.getElementById('btn-confirm-analyze');
+
+            // Remove old event listeners to prevent duplicate clicks
+            const newBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+
+            newBtn.addEventListener('click', async () => {
+                const recencyInput = document.getElementById('analyze-recency').value;
+                const recency_days = parseInt(recencyInput) || 180;
+                modal.style.display = 'none';
+
+                try {
+                    const res = await fetch(`/api/influencers/${prospectId}/analyze`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ recency_days })
+                    });
+                    const data = await res.json();
+                    if (data.success) { loadProspects(); } else { alert('Error: ' + data.error); }
+                } catch (err) { alert('Error: ' + err.message); }
+            });
         }
 
         async function viewAnalysis(prospectId) {
