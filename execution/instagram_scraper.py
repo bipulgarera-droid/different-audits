@@ -571,11 +571,17 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     if loc_clean:
         hashtags.append(f"{niche_clean}{loc_clean}")
         hashtags.append(loc_clean + niche_clean)
+        
+    # Add targeted variants for better brand/business discovery
+    commercial_suffixes = ["startup", "business", "store", "shop", "brand", "company", "india"]
+    creator_suffixes = ["tips", "expert", "coach", "community", "creator"]
     
-    # Add common variants (expanded list for higher yield)
-    common_suffixes = ["tips", "life", "coach", "expert", "blog", "community", "brand", "company", "creator", "page"]
-    for suffix in common_suffixes:
+    all_suffixes = commercial_suffixes + creator_suffixes
+    for suffix in all_suffixes:
         hashtags.append(f"{niche_clean}{suffix}")
+        if loc_clean:
+             # e.g., foodbrandindianstartup, foodbrandmumbaistore
+             hashtags.append(f"{niche_clean}{loc_clean}{suffix}")
     
     # Deduplicate hashtags
     hashtags = list(dict.fromkeys(hashtags))
@@ -583,7 +589,7 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
     logger.info(f"Source 2: Hashtag discovery with {hashtags}...")
     hashtag_results = _run_actor_async("apify/instagram-hashtag-scraper", {
         "hashtags": hashtags,
-        "resultsLimit": min(limit * 15, 600),
+        "resultsLimit": min(limit * 50, 1000),
         "resultsType": "posts"
     }, timeout_secs=180)
     
