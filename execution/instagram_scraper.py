@@ -98,14 +98,29 @@ def _run_actor_async(actor_id, input_data, timeout_secs=300):
         return []
 
     items_url = f"{APIFY_BASE}/datasets/{dataset_id}/items"
-    items_resp = requests.get(items_url, params={"token": api_key, "format": "json"}, timeout=30)
-    if items_resp.status_code == 200:
-        items = items_resp.json()
-        logger.info(f"Fetched {len(items)} items from dataset {dataset_id}")
-        return items
-    else:
-        logger.error(f"Failed to fetch dataset: {items_resp.status_code}")
-        return []
+    
+    # Retry fetching the dataset to prevent 502/503 errors when Apify is under load
+    for attempt in range(4):
+        try:
+            items_resp = requests.get(items_url, params={"token": api_key, "format": "json"}, timeout=45)
+            if items_resp.status_code == 200:
+                items = items_resp.json()
+                logger.info(f"Fetched {len(items)} items from dataset {dataset_id}")
+                return items
+            elif items_resp.status_code in (500, 502, 503, 504):
+                wait_time = 2 ** attempt
+                logger.warning(f"Apify dataset fetch failed with {items_resp.status_code}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Failed to fetch dataset: {items_resp.status_code} - {items_resp.text[:200]}")
+                return []
+        except requests.exceptions.RequestException as e:
+            wait_time = 2 ** attempt
+            logger.warning(f"Network error fetching dataset: {e}. Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+            
+    logger.error("Failed to fetch dataset after multiple retries.")
+    return []
 
 
 # ─────────────────────────────────────────────
@@ -650,8 +665,22 @@ def find_influencers_by_niche(niche_keyword, location="", min_followers=10000, m
                 category = (item.get("businessCategoryName") or "").lower()
                 uname_lower = username.lower()
                 
+                # Check strict string match
+                matched = False
+                search_text = f"{bio} {full_name} {category} {uname_lower}"
+                if loc_lower in search_text:
+                    matched = True
+                
+                # Broaden context for "India" specifically, to avoid skipping brands that just list their city
+                if not matched and loc_lower == "india":
+                    india_cities = ["mumbai", "delhi", "bangalore", "bengaluru", "chennai", "hyderabad", "pune", "kolkata", "ahmedabad", "noida", "gurgaon"]
+                    for city in india_cities:
+                        if city in search_text:
+                            matched = True
+                            break
+                            
                 # If the location keyword isn't found anywhere in the profile data, skip it
-                if loc_lower not in bio and loc_lower not in full_name and loc_lower not in category and loc_lower not in uname_lower:
+                if not matched:
                     continue
                 
             influencers.append({
