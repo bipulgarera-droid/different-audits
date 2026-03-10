@@ -1016,124 +1016,121 @@ def _parse_followers_from_snippet(snippet):
 
 def find_influencers_serper(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
     """
-    Replaces the Apify Hashtag Scraper. Uses the ultrafast Google Serper API
-    to find thousands of profiles instantly using advanced Dorks.
+    Uses the Apify Google Search Scraper actor to find Instagram profiles by niche.
+    Replaces direct Serper API calls which were blocked by site:instagram.com queries.
+    Falls back through multiple query variants to hit the requested limit.
     """
-    logger.info(f"Serper Influencer Discovery: '{niche_keyword}' near '{location}' ({min_followers}-{max_followers} followers, limit={limit})")
+    logger.info(f"Google Search Influencer Discovery: '{niche_keyword}' near '{location}' ({min_followers}-{max_followers} followers, limit={limit})")
     
-    serper_key = _get_serper_api_key()
-    url = "https://google.serper.dev/search"
-    headers = {
-        'X-API-KEY': serper_key,
-        'Content-Type': 'application/json'
-    }
-    
-    # ── 1. Create Google Dorks ──
-    # -inurl: filters out specific posts, reels, tags, and explore pages so we only get root profiles
-    # Examples:
-    # site:instagram.com "fitness coach" india -inurl:p -inurl:reel -inurl:reels -inurl:explore -inurl:tags
-    
-    dork_query = f"site:instagram.com \"{niche_keyword}\""
+    # ── 1. Build Query Variants ──
+    # No inurl or minus exclusions in the query.  All filtering is done in python 
+    # after the results come back, to avoid Serper/Google blocking the query.
+    base_query = f"site:instagram.com \"{niche_keyword}\""
     if location:
-        dork_query += f" {location}"
-        
-    # No `-inurl:` or `-p` exclusions here! We do NOT filter on the search side, 
-    # because Serper's firewall randomly flags exclusion operators as bot behavior.
-    # The python loop below will safely ignore any scraped link that contains /p/ or /reels/.
+        base_query += f" {location}"
     
-    # We create multiple fallback variants. If Google runs out of pages on the first query
-    # before we hit the limit, we swap to the next query and keep grabbing profiles.
     queries = [
-        dork_query,
-        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "startup"'),
-        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "brand"'),
-        dork_query.replace(f'"{niche_keyword}"', f'"{niche_keyword}" "store"')
+        base_query,
+        base_query + " \"startup\"",
+        base_query + " \"brand\"",
+        base_query + " \"store\"",
+        base_query + " \"creator\"",
     ]
     
     influencers = []
     seen_usernames = set()
     
-    for current_dork in queries:
+    # How many pages to ask Apify to scrape per query variant 
+    # (each page = 10 organic results from Google)
+    pages_needed = max(10, (limit * 6) // 10)  # e.g. for limit=50, ask for 30 pages = 300 results to filter from
+    
+    for current_query in queries:
         if len(influencers) >= limit:
             break
             
-        logger.info(f"Executing Dork: {current_dork}")
+        remaining = limit - len(influencers)
+        logger.info(f"Executing Google Search query via Apify: {current_query} (need {remaining} more)")
         
-        # ── 2. Serper Pagination Loop ──
-        page = 1
+        # ── 2. Run Apify Google Search Scraper ──
+        actor_input = {
+            "queries": current_query,
+            "maxPagesPerQuery": pages_needed,
+            "resultsPerPage": 10,   # Google strictly allows 10 organic results per page
+            "languageCode": "",
+            "mobileResults": False,
+            "saveHtml": False,
+            "saveHtmlToKeyValueStore": False
+        }
         
-        while len(influencers) < limit and page <= 50: # Max 50 pages (5,000 results) to dig deep
-            payload = {
-                "q": current_dork,
-                "page": page,
-                "num": 50 # Serper supports num up to 100 on safe queries
-            }
-            
-            # Add Geo-location parameter if researching India
-            if location and "india" in location.lower():
-                payload["gl"] = "in"
-            
-            try:
-                response = requests.post(url, headers=headers, json=payload, timeout=20)
-                if response.status_code != 200:
-                    logger.error(f"Serper API Error: {response.text}")
-                    break
-                    
-                data = response.json()
-                organic_results = data.get("organic", [])
-                
-                if not organic_results:
-                    logger.warning(f"No more organic results found on page {page} for this query.")
-                    break
-                    
-                for res in organic_results:
-                    link = res.get("link", "")
-                    snippet = res.get("snippet", "")
-                    title = res.get("title", "")
-                    
-                    # Regex out the username
-                    import re
-                    match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', link)
-                    if match:
-                        username = match.group(1).strip('.')
-                        skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
-                        if username.lower() in skip or username.lower() in seen_usernames:
-                            continue
-                            
-                        # Pre-filter: Check the Snippet for "14K Followers" to avoid wasting time verifying bad accounts
-                        estimated_followers = _parse_followers_from_snippet(snippet)
-                        
-                        if estimated_followers > 0:
-                            # If a snippet HAS a follower count, we strictly enforce it immediately
-                            if estimated_followers < min_followers or estimated_followers > max_followers:
-                                continue
-                                
-                        # Extract full name from the title (usually "Name (@username) • Instagram...")
-                        full_name = title.split("(@")[0].split(" - ")[0].strip()
-                        
-                        seen_usernames.add(username.lower())
-                        influencers.append({
-                            "username": username,
-                            "full_name": full_name,
-                            "followers": estimated_followers or 0,
-                            "following": 0,
-                            "bio": snippet,
-                            "profile_pic_url": "", # Serper doesn't provide high-res profile pics consistently
-                            "engagement_rate": 0,  # Cannot calculate without Apify
-                            "is_verified": False,
-                            "category": "",
-                            "external_url": ""
-                        })
-                        
-                        if len(influencers) >= limit:
-                            break
-                
-                page += 1
-                
-            except Exception as e:
-                logger.error(f"Error calling Serper API: {e}")
+        # Add country code for regional targeting if search includes india
+        if location and "india" in location.lower():
+            actor_input["countryCode"] = "in"
+        
+        results = _run_actor_async("apify/google-search-scraper", actor_input, timeout_secs=300)
+        
+        if not results:
+            logger.warning(f"No results returned from Apify for query: {current_query}")
+            continue
+        
+        # ── 3. Parse Results ──
+        # Each item in results is one SERP page: it has `organicResults` list
+        import re
+        for page_item in results:
+            if len(influencers) >= limit:
                 break
                 
-    logger.info(f"Serper Discovery COMPLETE: {len(influencers)} qualified influencers returned directly.")
+            organic_results = page_item.get("organicResults", [])
+            
+            for res in organic_results:
+                if len(influencers) >= limit:
+                    break
+                    
+                url_link = res.get("url", "")
+                snippet = res.get("description", "")
+                title = res.get("title", "")
+                
+                # Only care about Instagram links
+                if "instagram.com" not in url_link:
+                    continue
+                
+                # Filter out posts, reels, hashtag pages — we want user profile links only
+                match = re.search(r'instagram\.com/([a-zA-Z0-9_\.]+)', url_link)
+                if not match:
+                    continue
+                    
+                username = match.group(1).strip('.')
+                skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                if username.lower() in skip or username.lower() in seen_usernames:
+                    continue
+                    
+                # Also hard-filter links that are clearly posts/reels by their full URL structure
+                if "/p/" in url_link or "/reel/" in url_link or "/tv/" in url_link:
+                    continue
+                
+                # Pre-filter by follower count from the snippet text ("14K Followers")
+                estimated_followers = _parse_followers_from_snippet(snippet)
+                if estimated_followers > 0:
+                    if estimated_followers < min_followers or estimated_followers > max_followers:
+                        continue
+                        
+                # Extract full name from the title (usually "Name (@username) • Instagram...")
+                full_name = title.split("(@")[0].split(" - ")[0].strip()
+                
+                seen_usernames.add(username.lower())
+                influencers.append({
+                    "username": username,
+                    "full_name": full_name,
+                    "followers": estimated_followers or 0,
+                    "following": 0,
+                    "bio": snippet,
+                    "profile_pic_url": "",
+                    "engagement_rate": 0,
+                    "is_verified": False,
+                    "category": "",
+                    "external_url": f"https://instagram.com/{username}"
+                })
+                
+    logger.info(f"Google Search Discovery COMPLETE: {len(influencers)} qualified influencers returned.")
     return influencers
+
 
