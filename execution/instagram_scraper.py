@@ -1042,7 +1042,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     
     # How many pages to ask Apify to scrape per query variant 
     # (each page = 10 organic results from Google)
-    pages_needed = max(10, (limit * 6) // 10)  # e.g. for limit=50, ask for 30 pages = 300 results to filter from
+    pages_needed = limit  # 1 page = 10 results; limit pages gives us ~10x raw candidates to filter from
     
     for current_query in queries:
         if len(influencers) >= limit:
