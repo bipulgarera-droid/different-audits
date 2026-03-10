@@ -1120,12 +1120,11 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                 # Filter strictly by follower count from the snippet text
                 estimated_followers, estimated_following = _parse_followers_from_snippet(snippet)
                 
-                # STRICT ENFORCEMENT: If we can't find a follower count, or it's out of bounds, skip it.
-                if estimated_followers == 0:
-                    continue
-                    
-                if estimated_followers < min_followers or estimated_followers > max_followers:
-                    continue
+                # STRICT ENFORCEMENT: Only check bounds IF we successfully parsed a follower count from the snippet.
+                # If Google didn't include "X Followers" in the snippet, we let it pass (estimated_followers = 0)
+                if estimated_followers > 0:
+                    if estimated_followers < min_followers or estimated_followers > max_followers:
+                        continue
                         
                 # Extract full name from the title (usually "Name (@username) • Instagram...")
                 full_name = title.split("(@")[0].split(" - ")[0].strip()
