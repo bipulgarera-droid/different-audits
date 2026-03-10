@@ -2383,7 +2383,7 @@ def push_influencers_to_outreach():
 
     try:
         resp = _requests.post(
-            f'{OUTREACH_API_URL}/api/import_leads',
+            f'{OUTREACH_API_URL}/api/import-leads',
             json={'project_id': project_id, 'leads': leads},
             timeout=30
         )
