@@ -115,11 +115,19 @@ if SUPABASE_URL and effective_key:
     if SUPABASE_SERVICE_KEY:
         supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     else:
-        # If service role key not available, use anon for admin too
         supabase_admin = supabase
     logger.info(f"Supabase client initialized (main uses {'service_role' if SUPABASE_SERVICE_KEY else 'anon'} key)")
 else:
     logger.warning("Supabase credentials not found - running without database")
+
+# Outreach app base URL (for proxying influencer pushes via HTTP)
+OUTREACH_API_URL = os.getenv('OUTREACH_API_URL', '').rstrip('/')
+if OUTREACH_API_URL:
+    logger.info(f"Outreach API URL configured: {OUTREACH_API_URL}")
+else:
+    logger.warning("OUTREACH_API_URL not set — push-to-outreach will be unavailable")
+
+
 
 # =============================================================================
 # LOCAL DEV AUTH BYPASS
@@ -2295,8 +2303,102 @@ def delete_influencer(prospect_id):
         return jsonify({'error': str(e)}), 500
 
 
+# =============================================================================
+# OUTREACH INTEGRATION — HTTP Proxy to Outreach App
+# =============================================================================
+
+@app.route('/api/outreach/projects', methods=['GET'])
+@login_required
+def get_outreach_projects():
+    """Fetch all projects from the Outreach app (proxied via HTTP)."""
+    if not OUTREACH_API_URL:
+        return jsonify({'error': 'OUTREACH_API_URL not configured in .env'}), 503
+    try:
+        import requests as _requests
+        resp = _requests.get(f'{OUTREACH_API_URL}/api/projects', timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        projects = data.get('projects', data) if isinstance(data, dict) else data
+        return jsonify({'success': True, 'projects': projects})
+    except Exception as e:
+        logger.error(f"Outreach projects fetch error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/influencers/push-to-outreach', methods=['POST'])
+@login_required
+def push_influencers_to_outreach():
+    """
+    Push influencers to the Outreach app via its /api/import_leads endpoint.
+    Maps influencer fields to the Outreach lead schema and POSTs them.
+    """
+    if not OUTREACH_API_URL:
+        return jsonify({'error': 'OUTREACH_API_URL not configured in .env'}), 503
+
+    import requests as _requests
+
+    data = request.json or {}
+    project_id = data.get('project_id')
+    influencers = data.get('influencers', [])
+
+    if not project_id:
+        return jsonify({'error': 'project_id is required'}), 400
+    if not influencers:
+        return jsonify({'error': 'No influencers to push'}), 400
+
+    # Map influencer fields → Outreach lead schema
+    leads = []
+    for inf in influencers:
+        username = (inf.get('username') or '').strip().lstrip('@')
+        if not username:
+            continue
+
+        bio_parts = [p for p in [
+            inf.get('bio', ''),
+            f"Followers: {inf['followers']:,}" if inf.get('followers') else '',
+            f"Engagement: {inf['engagement_rate']}%" if inf.get('engagement_rate') else '',
+            f"Category: {inf['category']}" if inf.get('category') else '',
+        ] if p]
+
+        leads.append({
+            'name': inf.get('full_name') or f'@{username}',
+            'email': '',
+            'instagram': f'https://instagram.com/{username}',
+            'company': inf.get('full_name') or username,
+            'bio': ' | '.join(bio_parts),
+            'website': inf.get('external_url', ''),
+            'category': inf.get('niche') or inf.get('category') or 'influencer',
+            'enrichment_data': {
+                'source_app': 'social_audit',
+                'instagram_username': username,
+                'followers': inf.get('followers', 0),
+                'engagement_rate': inf.get('engagement_rate', 0),
+                'is_verified': inf.get('is_verified', False),
+                'niche': inf.get('niche', ''),
+                'category': inf.get('category', ''),
+                'profile_pic_url': inf.get('profile_pic_url', ''),
+                'website': inf.get('external_url', ''),
+            }
+        })
+
+    try:
+        resp = _requests.post(
+            f'{OUTREACH_API_URL}/api/import_leads',
+            json={'project_id': project_id, 'leads': leads},
+            timeout=30
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Outreach push error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+
 if __name__ == '__main__':
     print("Starting server...")
     port = int(os.environ.get('PORT', 5002)) # Default to 5002 as requested
     print(f"Running on port {port}")
     app.run(host='0.0.0.0', port=port, debug=True)
+

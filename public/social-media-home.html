@@ -231,12 +231,18 @@
 
             <!-- Results Section -->
             <div id="disc-results" class="hidden">
-                <div class="flex justify-between items-center mb-4 border-t border-gray-800 pt-6">
+                <div class="flex flex-wrap justify-between items-center mb-4 border-t border-gray-800 pt-6 gap-2">
                     <h4 class="text-lg font-semibold text-white">Results (<span id="disc-count">0</span>)</h4>
-                    <button id="btn-save-prospects" onclick="saveToDashboard()"
-                        class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all">
-                        <i data-lucide="save" class="w-4 h-4"></i> Save to Dashboard
-                    </button>
+                    <div class="flex gap-2 flex-wrap">
+                        <button id="btn-save-prospects" onclick="saveToDashboard()"
+                            class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all">
+                            <i data-lucide="save" class="w-4 h-4"></i> Save to Dashboard
+                        </button>
+                        <button onclick="openOutreachPush(null)" id="btn-push-outreach-bulk"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all">
+                            <i data-lucide="send" class="w-4 h-4"></i> Push to Outreach
+                        </button>
+                    </div>
                 </div>
 
                 <div id="disc-list"
@@ -893,6 +899,9 @@
                                             <button onclick="createSlides('${p.analysis_data.audit_id}')" class="text-xs bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 px-3 py-1.5 rounded-lg border border-violet-500/20 flex items-center gap-1">
                                                 <i data-lucide="presentation" class="w-3 h-3"></i> Create Slides
                                             </button>` : ''}
+                                        <button onclick="openOutreachPush([{username:p.username,full_name:p.full_name,followers:p.followers,bio:p.bio,engagement_rate:p.engagement_rate,external_url:p.external_url,category:p.category,niche:p.niche}])" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                            <i data-lucide="send" class="w-3 h-3"></i> Push to Outreach
+                                        </button>
                                         <button onclick="deleteProspect('${p.id}')" class="text-xs bg-red-900/50 hover:bg-red-800 text-red-300 px-3 py-1.5 rounded-lg flex items-center gap-1">
                                             <i data-lucide="trash-2" class="w-3 h-3"></i>
                                         </button>
@@ -1027,7 +1036,152 @@
         }
 
         init();
+
+        // ─────────────────────────────────────────────
+        // PUSH TO OUTREACH — Config + Logic
+        // ─────────────────────────────────────────────
+
+        // Store the influencers queued for push (null = use discoveredInfluencers)
+        let _outreachPushQueue = null;
+
+        function openOutreachPush(influencerOverride) {
+            _outreachPushQueue = influencerOverride; // null = bulk from discoveredInfluencers
+            const modal = document.getElementById('outreach-push-modal');
+            modal.style.display = 'flex';
+
+            // Reset state
+            document.getElementById('outreach-project-row').style.display = 'none';
+            document.getElementById('outreach-project-select').innerHTML = '<option value="">-- Select Project --</option>';
+            document.getElementById('outreach-push-status').textContent = '';
+            document.getElementById('btn-fetch-projects').disabled = false;
+
+            lucide.createIcons();
+        }
+
+        function closeOutreachPush() {
+            document.getElementById('outreach-push-modal').style.display = 'none';
+        }
+
+        async function fetchOutreachProjects() {
+            const btn = document.getElementById('btn-fetch-projects');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block"></div> Loading...';
+            document.getElementById('outreach-push-status').textContent = '';
+
+            try {
+                const res = await fetch('/api/outreach/projects');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                const projects = data.projects || [];
+
+                const sel = document.getElementById('outreach-project-select');
+                sel.innerHTML = '<option value="">-- Select Project --</option>' +
+                    projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+                document.getElementById('outreach-project-row').style.display = 'block';
+                document.getElementById('outreach-push-status').textContent = `✅ ${projects.length} projects loaded`;
+            } catch (err) {
+                document.getElementById('outreach-push-status').textContent = `❌ Error: ${err.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4 inline"></i> Load Projects';
+                lucide.createIcons();
+            }
+        }
+
+        async function confirmOutreachPush() {
+            const projectId = document.getElementById('outreach-project-select').value;
+            if (!projectId) { alert('Please select a project'); return; }
+
+            // Build leads list from either the override or discoveredInfluencers
+            const sourcelist = _outreachPushQueue || discoveredInfluencers;
+            if (!sourcelist || sourcelist.length === 0) {
+                alert('No influencers to push'); return;
+            }
+
+            const btn = document.getElementById('btn-confirm-outreach-push');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block"></div> Pushing...';
+            document.getElementById('outreach-push-status').textContent = '';
+
+            try {
+                const res = await fetch('/api/influencers/push-to-outreach', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_id: projectId, influencers: sourcelist })
+                });
+                const result = await res.json();
+                if (res.ok && !result.error) {
+                    document.getElementById('outreach-push-status').textContent =
+                        `✅ Done! ${result.imported} imported, ${result.skipped_duplicate || 0} duplicates skipped.`;
+                    btn.innerHTML = '<i data-lucide="check" class="w-4 h-4 inline"></i> Done!';
+                    lucide.createIcons();
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i data-lucide="send" class="w-4 h-4 inline"></i> Push to Outreach';
+                        lucide.createIcons();
+                    }, 3000);
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+            } catch (err) {
+                document.getElementById('outreach-push-status').textContent = `❌ Push failed: ${err.message}`;
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="send" class="w-4 h-4 inline"></i> Push to Outreach';
+                lucide.createIcons();
+            }
+        }
     </script>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- PUSH TO OUTREACH MODAL                      -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div id="outreach-push-modal"
+        class="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10"
+        style="display:none;">
+        <div class="glass-card glow-violet p-8 max-w-lg w-full mx-4 relative"
+            style="background: rgba(15,15,25,0.97); border: 1px solid rgba(99,102,241,0.3);">
+            <button onclick="closeOutreachPush()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center">
+                    <i data-lucide="send" class="w-4 h-4 text-indigo-400"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">Push to Outreach App</h3>
+            </div>
+            <p class="text-gray-500 text-sm mb-6 ml-11">Send discovered influencers directly to your Outreach campaign
+            </p>
+
+            <div class="space-y-4">
+                <button id="btn-fetch-projects" onclick="fetchOutreachProjects()"
+                    class="w-full bg-gray-800 hover:bg-gray-700 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2 border border-gray-700 transition-all">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Load Outreach Projects
+                </button>
+
+                <div id="outreach-project-row" style="display:none;">
+                    <label class="text-sm text-gray-400 mb-1 block">Select Project</label>
+                    <select id="outreach-project-select"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white outline-none focus:border-indigo-500 transition-colors">
+                        <option value="">-- Select Project --</option>
+                    </select>
+                </div>
+
+                <p id="outreach-push-status" class="text-sm text-gray-400 min-h-[20px]"></p>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeOutreachPush()"
+                    class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-lg font-medium border border-gray-700">Cancel</button>
+                <button id="btn-confirm-outreach-push" onclick="confirmOutreachPush()"
+                    class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-3 rounded-lg font-medium flex items-center justify-center gap-2">
+                    <i data-lucide="send" class="w-4 h-4"></i> Push to Outreach
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
