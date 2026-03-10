@@ -1001,7 +1001,7 @@ def _parse_followers_from_snippet(snippet):
     following = 0
     
     # Match Followers
-    f_match = re.search(r'([\d\.,]+)([kKmM]?)\s+Followers', snippet, re.IGNORECASE)
+    f_match = re.search(r'([\d\.,]+)([kKmM]?)\+?\s+Followers', snippet, re.IGNORECASE)
     if f_match:
         num_str = f_match.group(1).replace(',', '')
         multiplier = f_match.group(2).upper()
@@ -1014,7 +1014,7 @@ def _parse_followers_from_snippet(snippet):
             pass
             
     # Match Following
-    fl_match = re.search(r'([\d\.,]+)([kKmM]?)\s+Following', snippet, re.IGNORECASE)
+    fl_match = re.search(r'([\d\.,]+)([kKmM]?)\+?\s+Following', snippet, re.IGNORECASE)
     if fl_match:
         num_str = fl_match.group(1).replace(',', '')
         multiplier = fl_match.group(2).upper()
@@ -1057,7 +1057,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     
     # How many pages to ask Apify to scrape per query variant 
     # (each page = 10 organic results from Google)
-    pages_needed = limit  # 1 page = 10 results; limit pages gives us ~10x raw candidates to filter from
+    pages_needed = limit  # 1 page = 10 results; limit pages gets ~10x candidates to filter
     
     for current_query in queries:
         if len(influencers) >= limit:
@@ -1097,6 +1097,7 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                 url_link = res.get("url", "")
                 snippet = res.get("description", "")
                 title = res.get("title", "")
+                followers_amount_str = res.get("followersAmount", "")
                 
                 # Only care about Instagram links
                 if "instagram.com" not in url_link:
@@ -1117,14 +1118,19 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                 if "/p/" in url_link or "/reel/" in url_link or "/tv/" in url_link or "/tags/" in url_link or "/explore/" in url_link:
                     continue
                 
-                # Filter strictly by follower count from the snippet text
-                estimated_followers, estimated_following = _parse_followers_from_snippet(snippet)
+                # Combine snippet and followersAmount so our regex can catch it regardless of where Google/Apify put it
+                combined_text = f"{snippet} {followers_amount_str}"
                 
-                # STRICT ENFORCEMENT: Only check bounds IF we successfully parsed a follower count from the snippet.
-                # If Google didn't include "X Followers" in the snippet, we let it pass (estimated_followers = 0)
-                if estimated_followers > 0:
-                    if estimated_followers < min_followers or estimated_followers > max_followers:
-                        continue
+                # Filter strictly by follower count from the combined text
+                estimated_followers, estimated_following = _parse_followers_from_snippet(combined_text)
+                
+                # STRICT ENFORCEMENT: Since we now actively extract the followersAmount field, we can enforce bounds!
+                # If we still can't find a follower count, or it's out of bounds, skip it.
+                if estimated_followers == 0:
+                    continue
+                    
+                if estimated_followers < min_followers or estimated_followers > max_followers:
+                    continue
                         
                 # Extract full name from the title (usually "Name (@username) • Instagram...")
                 full_name = title.split("(@")[0].split(" - ")[0].strip()
