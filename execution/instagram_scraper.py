@@ -990,28 +990,43 @@ def _parse_followers_from_snippet(snippet):
     """
     Instagram meta snippets usually follow this format: 
     '14K Followers, 1,200 Following, 300 Posts - See Instagram photos and videos from...'
-    This function extracts that first number and converts 'K' or 'M' to an integer.
+    This function extracts both followers and following counts.
+    Returns: (followers_count, following_count)
     """
     import re
     if not snippet:
-        return 0
+        return 0, 0
         
-    match = re.search(r'([\d\.,]+)([kKmM]?)\s+Followers', snippet, re.IGNORECASE)
-    if not match:
-        return 0
-        
-    num_str = match.group(1).replace(',', '')
-    multiplier = match.group(2).upper()
+    followers = 0
+    following = 0
     
-    try:
-        num = float(num_str)
-        if multiplier == 'K':
-            num *= 1000
-        elif multiplier == 'M':
-            num *= 1000000
-        return int(num)
-    except ValueError:
-        return 0
+    # Match Followers
+    f_match = re.search(r'([\d\.,]+)([kKmM]?)\s+Followers', snippet, re.IGNORECASE)
+    if f_match:
+        num_str = f_match.group(1).replace(',', '')
+        multiplier = f_match.group(2).upper()
+        try:
+            num = float(num_str)
+            if multiplier == 'K': num *= 1000
+            elif multiplier == 'M': num *= 1000000
+            followers = int(num)
+        except ValueError:
+            pass
+            
+    # Match Following
+    fl_match = re.search(r'([\d\.,]+)([kKmM]?)\s+Following', snippet, re.IGNORECASE)
+    if fl_match:
+        num_str = fl_match.group(1).replace(',', '')
+        multiplier = fl_match.group(2).upper()
+        try:
+            num = float(num_str)
+            if multiplier == 'K': num *= 1000
+            elif multiplier == 'M': num *= 1000000
+            following = int(num)
+        except ValueError:
+            pass
+            
+    return followers, following
 
 
 def find_influencers_serper(niche_keyword, location="", min_followers=10000, max_followers=100000, limit=20):
@@ -1076,15 +1091,9 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
         # Each item in results is one SERP page: it has `organicResults` list
         import re
         for page_item in results:
-            if len(influencers) >= limit:
-                break
-                
             organic_results = page_item.get("organicResults", [])
             
             for res in organic_results:
-                if len(influencers) >= limit:
-                    break
-                    
                 url_link = res.get("url", "")
                 snippet = res.get("description", "")
                 title = res.get("title", "")
@@ -1099,19 +1108,24 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                     continue
                     
                 username = match.group(1).strip('.')
-                skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory"}
+                # Extended skip list to catch edge case false URLs
+                skip = {"p", "reel", "reels", "explore", "stories", "accounts", "tags", "about", "directory", "ar", "tv", "channel", "c"}
                 if username.lower() in skip or username.lower() in seen_usernames:
                     continue
                     
                 # Also hard-filter links that are clearly posts/reels by their full URL structure
-                if "/p/" in url_link or "/reel/" in url_link or "/tv/" in url_link:
+                if "/p/" in url_link or "/reel/" in url_link or "/tv/" in url_link or "/tags/" in url_link or "/explore/" in url_link:
                     continue
                 
-                # Pre-filter by follower count from the snippet text ("14K Followers")
-                estimated_followers = _parse_followers_from_snippet(snippet)
-                if estimated_followers > 0:
-                    if estimated_followers < min_followers or estimated_followers > max_followers:
-                        continue
+                # Filter strictly by follower count from the snippet text
+                estimated_followers, estimated_following = _parse_followers_from_snippet(snippet)
+                
+                # STRICT ENFORCEMENT: If we can't find a follower count, or it's out of bounds, skip it.
+                if estimated_followers == 0:
+                    continue
+                    
+                if estimated_followers < min_followers or estimated_followers > max_followers:
+                    continue
                         
                 # Extract full name from the title (usually "Name (@username) • Instagram...")
                 full_name = title.split("(@")[0].split(" - ")[0].strip()
@@ -1120,8 +1134,8 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
                 influencers.append({
                     "username": username,
                     "full_name": full_name,
-                    "followers": estimated_followers or 0,
-                    "following": 0,
+                    "followers": estimated_followers,
+                    "following": estimated_following,
                     "bio": snippet,
                     "profile_pic_url": "",
                     "engagement_rate": 0,
