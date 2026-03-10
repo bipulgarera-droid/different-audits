@@ -1038,19 +1038,16 @@ def find_influencers_serper(niche_keyword, location="", min_followers=10000, max
     logger.info(f"Google Search Influencer Discovery: '{niche_keyword}' near '{location}' ({min_followers}-{max_followers} followers, limit={limit})")
     
     # ── 1. Build Query Variants ──
-    # The word "followers" forces Google to show profile snippets.
-    # Negative operators (-reel -p) drop content pages right at the Google SERP level.
-    base_query = 'site:instagram.com "followers"'
+    # The word "k followers" forces Google to show profile snippets only, dodging content URLs inherently.
+    base_query = 'site:instagram.com "k followers"'
     if location:
         base_query += f' "{location}"'
         
-    negatives = "-reel -reels -p -tv -explore"
-    
     queries = [
-        f'{base_query} "{niche_keyword}" {negatives}',
-        f'{base_query} "{niche_keyword}" "DM to order" {negatives}',
-        f'{base_query} "{niche_keyword}" "shop now" {negatives}',
-        f'{base_query} "{niche_keyword}" "link in bio" {negatives}',
+        f'{base_query} "{niche_keyword}"',
+        f'{base_query} "{niche_keyword}" "DM to order"',
+        f'{base_query} "{niche_keyword}" "shop now"',
+        f'{base_query} "{niche_keyword}" "link in bio"',
     ]
     
     influencers = []
